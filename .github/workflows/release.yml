@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: dot-aarch64-macos
+          - os: macos-13
+            target: x86_64-apple-darwin
+            asset_name: dot-x86_64-macos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        run: cp target/${{ matrix.target }}/release/dot ${{ matrix.asset_name }}
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_name }}
+
+  update-formula:
+    name: Update hometaps formula
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout hometaps
+        uses: actions/checkout@v4
+        with:
+          repository: chrisfentiman/homebrew-hometaps
+          token: ${{ secrets.HOMETAPS_TOKEN }}
+
+      - name: Compute SHA256s and update formula
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          ARM_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dot-aarch64-macos"
+          X86_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dot-x86_64-macos"
+
+          ARM_SHA=$(curl -fsSL "$ARM_URL" | sha256sum | awk '{print $1}')
+          X86_SHA=$(curl -fsSL "$X86_URL" | sha256sum | awk '{print $1}')
+
+          cat > Formula/dot.rb <<EOF
+          class Dot < Formula
+            desc "Personal dotfiles manager with Proton Pass secret injection"
+            homepage "https://github.com/chrisfentiman/dot"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "${ARM_URL}"
+                sha256 "${ARM_SHA}"
+              elsif Hardware::CPU.intel?
+                url "${X86_URL}"
+                sha256 "${X86_SHA}"
+              end
+            end
+
+            def install
+              arch = Hardware::CPU.arm? ? "aarch64" : "x86_64"
+              chmod 0755, "dot-\#{arch}-macos"
+              bin.install "dot-\#{arch}-macos" => "dot"
+            end
+
+            test do
+              assert_predicate bin/"dot", :exist?
+            end
+          end
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/dot.rb
+          git commit -m "chore: update dot formula to ${VERSION}"
+          git push
