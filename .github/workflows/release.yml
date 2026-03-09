@@ -63,8 +63,25 @@ jobs:
           ARM_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dot-aarch64-macos"
           X86_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dot-x86_64-macos"
 
-          ARM_SHA=$(curl -fsSL "$ARM_URL" | sha256sum | awk '{print $1}')
-          X86_SHA=$(curl -fsSL "$X86_URL" | sha256sum | awk '{print $1}')
+          # Retry until assets are available (can lag after job completes)
+          for i in {1..10}; do
+            ARM_SHA=$(curl -fsSL "$ARM_URL" | sha256sum | awk '{print $1}')
+            [ -n "$ARM_SHA" ] && break
+            echo "Waiting for ARM asset... ($i)"
+            sleep 10
+          done
+
+          for i in {1..10}; do
+            X86_SHA=$(curl -fsSL "$X86_URL" | sha256sum | awk '{print $1}')
+            [ -n "$X86_SHA" ] && break
+            echo "Waiting for x86 asset... ($i)"
+            sleep 10
+          done
+
+          if [ -z "$ARM_SHA" ] || [ -z "$X86_SHA" ]; then
+            echo "ERROR: Could not fetch release assets after retries"
+            exit 1
+          fi
 
           cat > Formula/dot.rb <<EOF
           class Dot < Formula
