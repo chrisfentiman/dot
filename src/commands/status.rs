@@ -46,7 +46,7 @@ pub fn run() -> Result<()> {
             match dotfiles::expand_tilde(target_str) {
                 Err(_) => ConfigStatus::MissingSymlink,
                 Ok(link_path) => {
-                    if !link_path.symlink_metadata().is_ok() {
+                    if link_path.symlink_metadata().is_err() {
                         ConfigStatus::MissingSymlink
                     } else {
                         match fs::read_link(&link_path) {
