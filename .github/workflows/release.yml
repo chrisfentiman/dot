@@ -82,34 +82,33 @@ jobs:
             exit 1
           fi
 
-          cat > Formula/dot.rb <<EOF
-class Dot < Formula
-  desc "Personal dotfiles manager with Proton Pass secret injection"
-  homepage "https://github.com/chrisfentiman/dot"
-  version "${VERSION}"
-  license "MIT"
-
-  on_macos do
-    if Hardware::CPU.arm?
-      url "${ARM_URL}"
-      sha256 "${ARM_SHA}"
-    elsif Hardware::CPU.intel?
-      url "${X86_URL}"
-      sha256 "${X86_SHA}"
-    end
-  end
-
-  def install
-    arch = Hardware::CPU.arm? ? "aarch64" : "x86_64"
-    chmod 0755, "dotf-\#{arch}-macos"
-    bin.install "dotf-\#{arch}-macos" => "dotf"
-  end
-
-  test do
-    assert_predicate bin/"dotf", :exist?
-  end
-end
-EOF
+          # Write formula using printf to avoid heredoc YAML conflicts
+          printf 'class Dot < Formula\n' > Formula/dot.rb
+          printf '  desc "Personal dotfiles manager with Proton Pass secret injection"\n' >> Formula/dot.rb
+          printf '  homepage "https://github.com/chrisfentiman/dot"\n' >> Formula/dot.rb
+          printf '  version "%s"\n' "${VERSION}" >> Formula/dot.rb
+          printf '  license "MIT"\n' >> Formula/dot.rb
+          printf '\n' >> Formula/dot.rb
+          printf '  on_macos do\n' >> Formula/dot.rb
+          printf '    if Hardware::CPU.arm?\n' >> Formula/dot.rb
+          printf '      url "%s"\n' "${ARM_URL}" >> Formula/dot.rb
+          printf '      sha256 "%s"\n' "${ARM_SHA}" >> Formula/dot.rb
+          printf '    elsif Hardware::CPU.intel?\n' >> Formula/dot.rb
+          printf '      url "%s"\n' "${X86_URL}" >> Formula/dot.rb
+          printf '      sha256 "%s"\n' "${X86_SHA}" >> Formula/dot.rb
+          printf '    end\n' >> Formula/dot.rb
+          printf '  end\n' >> Formula/dot.rb
+          printf '\n' >> Formula/dot.rb
+          printf '  def install\n' >> Formula/dot.rb
+          printf '    arch = Hardware::CPU.arm? ? "aarch64" : "x86_64"\n' >> Formula/dot.rb
+          printf '    chmod 0755, "dotf-#{arch}-macos"\n' >> Formula/dot.rb
+          printf '    bin.install "dotf-#{arch}-macos" => "dotf"\n' >> Formula/dot.rb
+          printf '  end\n' >> Formula/dot.rb
+          printf '\n' >> Formula/dot.rb
+          printf '  test do\n' >> Formula/dot.rb
+          printf '    assert_predicate bin/"dotf", :exist?\n' >> Formula/dot.rb
+          printf '  end\n' >> Formula/dot.rb
+          printf 'end\n' >> Formula/dot.rb
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
