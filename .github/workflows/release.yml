@@ -17,10 +17,10 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-            asset_name: dot-aarch64-macos
+            asset_name: dotf-aarch64-macos
           - os: macos-latest
             target: x86_64-apple-darwin
-            asset_name: dot-x86_64-macos
+            asset_name: dotf-x86_64-macos
 
     steps:
       - name: Checkout
@@ -57,25 +57,24 @@ jobs:
       - name: Compute SHA256s and update formula
         env:
           TAG: ${{ github.ref_name }}
-          VERSION: ${{ github.ref_name }}
         run: |
           VERSION="${TAG#v}"
-          ARM_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dot-aarch64-macos"
-          X86_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dot-x86_64-macos"
+          ARM_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dotf-aarch64-macos"
+          X86_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dotf-x86_64-macos"
 
           # Retry until assets are available (can lag after job completes)
           for i in {1..10}; do
             ARM_SHA=$(curl -fsSL "$ARM_URL" | sha256sum | awk '{print $1}')
-            [ -n "$ARM_SHA" ] && break
+            [ -n "$ARM_SHA" ] && [ "$ARM_SHA" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && break
             echo "Waiting for ARM asset... ($i)"
-            sleep 10
+            sleep 15
           done
 
           for i in {1..10}; do
             X86_SHA=$(curl -fsSL "$X86_URL" | sha256sum | awk '{print $1}')
-            [ -n "$X86_SHA" ] && break
+            [ -n "$X86_SHA" ] && [ "$X86_SHA" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && break
             echo "Waiting for x86 asset... ($i)"
-            sleep 10
+            sleep 15
           done
 
           if [ -z "$ARM_SHA" ] || [ -z "$X86_SHA" ]; then
@@ -84,33 +83,33 @@ jobs:
           fi
 
           cat > Formula/dot.rb <<EOF
-          class Dot < Formula
-            desc "Personal dotfiles manager with Proton Pass secret injection"
-            homepage "https://github.com/chrisfentiman/dot"
-            version "${VERSION}"
-            license "MIT"
+class Dot < Formula
+  desc "Personal dotfiles manager with Proton Pass secret injection"
+  homepage "https://github.com/chrisfentiman/dot"
+  version "${VERSION}"
+  license "MIT"
 
-            on_macos do
-              if Hardware::CPU.arm?
-                url "${ARM_URL}"
-                sha256 "${ARM_SHA}"
-              elsif Hardware::CPU.intel?
-                url "${X86_URL}"
-                sha256 "${X86_SHA}"
-              end
-            end
+  on_macos do
+    if Hardware::CPU.arm?
+      url "${ARM_URL}"
+      sha256 "${ARM_SHA}"
+    elsif Hardware::CPU.intel?
+      url "${X86_URL}"
+      sha256 "${X86_SHA}"
+    end
+  end
 
-            def install
-              arch = Hardware::CPU.arm? ? "aarch64" : "x86_64"
-              chmod 0755, "dot-\#{arch}-macos"
-              bin.install "dot-\#{arch}-macos" => "dot"
-            end
+  def install
+    arch = Hardware::CPU.arm? ? "aarch64" : "x86_64"
+    chmod 0755, "dotf-\#{arch}-macos"
+    bin.install "dotf-\#{arch}-macos" => "dotf"
+  end
 
-            test do
-              assert_predicate bin/"dot", :exist?
-            end
-          end
-          EOF
+  test do
+    assert_predicate bin/"dotf", :exist?
+  end
+end
+EOF
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

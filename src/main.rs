@@ -5,7 +5,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "dot", about = "Personal dotfiles manager", version)]
+#[command(name = "dotf", about = "Personal dotfiles manager", version)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
