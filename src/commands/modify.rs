@@ -53,7 +53,12 @@ pub fn run(name: Option<String>) -> Result<()> {
         let link_path = dotfiles::expand_tilde(target_str)?;
         dotfiles::ensure_symlink(&output_path, &link_path)
             .with_context(|| format!("Failed to update symlink for {config_name}"))?;
-        println!("{} Symlink up to date: {} -> {}", "✓".green(), link_path.display(), output_path.display());
+        println!(
+            "{} Symlink up to date: {} -> {}",
+            "✓".green(),
+            link_path.display(),
+            output_path.display()
+        );
     }
 
     println!("{} {} updated", "✓".green().bold(), config_name.cyan());

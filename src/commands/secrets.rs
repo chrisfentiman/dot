@@ -37,12 +37,27 @@ fn list() -> Result<()> {
     let secrets = dotfiles::read_secrets()?;
 
     if secrets.secrets.is_empty() {
-        println!("No secrets configured. Run {} to add one.", "dot secrets add <name> <uri>".cyan());
+        println!(
+            "No secrets configured. Run {} to add one.",
+            "dot secrets add <name> <uri>".cyan()
+        );
         return Ok(());
     }
 
-    let name_width = secrets.secrets.keys().map(|k| k.len()).max().unwrap_or(12).max(12);
-    let uri_width = secrets.secrets.values().map(|v| v.len()).max().unwrap_or(10).max(10);
+    let name_width = secrets
+        .secrets
+        .keys()
+        .map(|k| k.len())
+        .max()
+        .unwrap_or(12)
+        .max(12);
+    let uri_width = secrets
+        .secrets
+        .values()
+        .map(|v| v.len())
+        .max()
+        .unwrap_or(10)
+        .max(10);
 
     println!(
         "{:<name_width$}  {:<uri_width$}",
@@ -82,7 +97,13 @@ fn validate() -> Result<()> {
                 passed += 1;
             }
             Err(e) => {
-                println!("{} {} ({}) — {}", "✗".red(), name.cyan(), uri.dimmed(), e.to_string().red());
+                println!(
+                    "{} {} ({}) — {}",
+                    "✗".red(),
+                    name.cyan(),
+                    uri.dimmed(),
+                    e.to_string().red()
+                );
                 failed += 1;
             }
         }

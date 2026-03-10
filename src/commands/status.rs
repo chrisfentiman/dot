@@ -16,7 +16,10 @@ pub fn run() -> Result<()> {
     let symlinks = dotfiles::read_symlinks()?;
 
     if symlinks.symlinks.is_empty() {
-        println!("No managed configs. Run {} to add one.", "dot config <path>".cyan());
+        println!(
+            "No managed configs. Run {} to add one.",
+            "dot config <path>".cyan()
+        );
         return Ok(());
     }
 
@@ -69,12 +72,7 @@ pub fn run() -> Result<()> {
             ConfigStatus::WrongTarget(t) => format!("wrong target: {}", t.red()),
         };
 
-        println!(
-            "{:<30}  {:<40}  {}",
-            name.cyan(),
-            target_str,
-            status_str
-        );
+        println!("{:<30}  {:<40}  {}", name.cyan(), target_str, status_str);
     }
 
     Ok(())

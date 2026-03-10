@@ -70,6 +70,10 @@ pub fn run() -> Result<()> {
     }
 
     println!();
-    println!("{} Sync complete — {} config(s) up to date", "✓".green().bold(), synced.len());
+    println!(
+        "{} Sync complete — {} config(s) up to date",
+        "✓".green().bold(),
+        synced.len()
+    );
     Ok(())
 }

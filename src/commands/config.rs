@@ -1,8 +1,8 @@
-use anyhow::{anyhow, Context, Result};
+use crate::dotfiles;
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 use std::fs;
-use crate::dotfiles;
 
 pub fn run(path: Option<String>) -> Result<()> {
     let raw_path = match path {
@@ -77,7 +77,11 @@ pub fn run(path: Option<String>) -> Result<()> {
     let template_path = configs_dir.join(format!("{filename}.tmpl"));
     fs::write(&template_path, &content)
         .with_context(|| format!("Failed to write template {}", template_path.display()))?;
-    println!("{} Template written to {}", "✓".green(), template_path.display());
+    println!(
+        "{} Template written to {}",
+        "✓".green(),
+        template_path.display()
+    );
 
     let mut secrets = dotfiles::read_secrets()?;
     for (name, uri) in &new_secrets {
@@ -85,19 +89,29 @@ pub fn run(path: Option<String>) -> Result<()> {
     }
     dotfiles::write_secrets(&secrets)?;
     if !new_secrets.is_empty() {
-        println!("{} Added {} secret(s) to .secrets.toml", "✓".green(), new_secrets.len());
+        println!(
+            "{} Added {} secret(s) to .secrets.toml",
+            "✓".green(),
+            new_secrets.len()
+        );
     }
 
     let target_str = format!("~/{filename}");
     let mut symlinks = dotfiles::read_symlinks()?;
-    symlinks.symlinks.insert(filename.clone(), target_str.clone());
+    symlinks
+        .symlinks
+        .insert(filename.clone(), target_str.clone());
     dotfiles::write_symlinks(&symlinks)?;
     println!("{} Added symlink mapping to .symlinks.toml", "✓".green());
 
     let output_path = configs_dir.join(&filename);
     dotfiles::render_and_write(&template_path, &output_path, &secrets)
         .with_context(|| format!("Failed to render template for {filename}"))?;
-    println!("{} Rendered template to {}", "✓".green(), output_path.display());
+    println!(
+        "{} Rendered template to {}",
+        "✓".green(),
+        output_path.display()
+    );
 
     let link_path = dotfiles::expand_tilde(&target_str)?;
     dotfiles::ensure_symlink(&output_path, &link_path)
@@ -110,6 +124,10 @@ pub fn run(path: Option<String>) -> Result<()> {
     );
 
     println!();
-    println!("{} {} is now managed by dot", "✓".green().bold(), filename.cyan());
+    println!(
+        "{} {} is now managed by dot",
+        "✓".green().bold(),
+        filename.cyan()
+    );
     Ok(())
 }

@@ -24,7 +24,10 @@ pub fn run() -> Result<()> {
     println!();
     println!("{}", "Setup complete!".green().bold());
     if synced.is_empty() {
-        println!("  No configs symlinked yet. Run {} to add one.", "dot config <path>".cyan());
+        println!(
+            "  No configs symlinked yet. Run {} to add one.",
+            "dot config <path>".cyan()
+        );
     } else {
         println!("  Symlinked configs:");
         for entry in &synced {
@@ -68,10 +71,13 @@ fn setup_dotfiles_dir() -> Result<()> {
                 .context("Failed to run git init")?;
         }
 
-        fs::create_dir_all(dotfiles.join("configs"))
-            .context("Failed to create configs dir")?;
+        fs::create_dir_all(dotfiles.join("configs")).context("Failed to create configs dir")?;
 
-        println!("{} Created fresh dotfiles repo at {}", "✓".green(), dotfiles.display());
+        println!(
+            "{} Created fresh dotfiles repo at {}",
+            "✓".green(),
+            dotfiles.display()
+        );
 
         if which("gh").is_ok() {
             println!("Creating private GitHub repo dotfiles...");
@@ -90,10 +96,16 @@ fn setup_dotfiles_dir() -> Result<()> {
             if gh_status.success() {
                 println!("{} GitHub repo created and remote set", "✓".green());
             } else {
-                println!("{} gh repo create failed — you can set up the remote manually", "!".yellow());
+                println!(
+                    "{} gh repo create failed — you can set up the remote manually",
+                    "!".yellow()
+                );
             }
         } else {
-            println!("{} gh not found — skipping GitHub repo creation", "!".yellow());
+            println!(
+                "{} gh not found — skipping GitHub repo creation",
+                "!".yellow()
+            );
         }
     } else {
         println!("Cloning {}...", url);
@@ -150,7 +162,11 @@ fn run_brewfile() -> Result<()> {
 
     println!("Running brew bundle...");
     let status = Command::new("brew")
-        .args(["bundle", "install", &format!("--file={}", brewfile.display())])
+        .args([
+            "bundle",
+            "install",
+            &format!("--file={}", brewfile.display()),
+        ])
         .status()
         .context("Failed to run brew bundle")?;
     if !status.success() {

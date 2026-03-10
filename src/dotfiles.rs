@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use handlebars::Handlebars;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -50,17 +50,16 @@ pub fn read_secrets() -> Result<SecretsFile> {
     if !path.exists() {
         return Ok(SecretsFile::default());
     }
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
     toml::from_str(&content).with_context(|| "Failed to parse .secrets.toml")
 }
 
 pub fn write_secrets(secrets: &SecretsFile) -> Result<()> {
     let path = secrets_toml_path()?;
-    let content = toml::to_string_pretty(secrets)
-        .with_context(|| "Failed to serialize .secrets.toml")?;
-    fs::write(&path, content)
-        .with_context(|| format!("Failed to write {}", path.display()))
+    let content =
+        toml::to_string_pretty(secrets).with_context(|| "Failed to serialize .secrets.toml")?;
+    fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))
 }
 
 pub fn read_symlinks() -> Result<SymlinksFile> {
@@ -68,17 +67,16 @@ pub fn read_symlinks() -> Result<SymlinksFile> {
     if !path.exists() {
         return Ok(SymlinksFile::default());
     }
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
     toml::from_str(&content).with_context(|| "Failed to parse .symlinks.toml")
 }
 
 pub fn write_symlinks(symlinks: &SymlinksFile) -> Result<()> {
     let path = symlinks_toml_path()?;
-    let content = toml::to_string_pretty(symlinks)
-        .with_context(|| "Failed to serialize .symlinks.toml")?;
-    fs::write(&path, content)
-        .with_context(|| format!("Failed to write {}", path.display()))
+    let content =
+        toml::to_string_pretty(symlinks).with_context(|| "Failed to serialize .symlinks.toml")?;
+    fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))
 }
 
 pub fn fetch_secret(uri: &str) -> Result<String> {
@@ -92,8 +90,8 @@ pub fn fetch_secret(uri: &str) -> Result<String> {
         return Err(anyhow!("pass failed for {uri}: {stderr}"));
     }
 
-    let value = String::from_utf8(output.stdout)
-        .with_context(|| "pass output is not valid UTF-8")?;
+    let value =
+        String::from_utf8(output.stdout).with_context(|| "pass output is not valid UTF-8")?;
     Ok(value.trim().to_string())
 }
 
@@ -124,7 +122,11 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
     Ok(rendered)
 }
 
-pub fn render_and_write(template_path: &Path, output_path: &Path, secrets: &SecretsFile) -> Result<()> {
+pub fn render_and_write(
+    template_path: &Path,
+    output_path: &Path,
+    secrets: &SecretsFile,
+) -> Result<()> {
     let rendered = render_template(template_path, secrets)?;
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)
@@ -140,15 +142,24 @@ pub fn ensure_symlink(target: &Path, link: &Path) -> Result<()> {
         if existing == target {
             return Ok(());
         }
-        fs::remove_file(link)
-            .with_context(|| format!("Failed to remove existing file/symlink at {}", link.display()))?;
+        fs::remove_file(link).with_context(|| {
+            format!(
+                "Failed to remove existing file/symlink at {}",
+                link.display()
+            )
+        })?;
     }
     if let Some(parent) = link.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create parent dir {}", parent.display()))?;
     }
-    unix_fs::symlink(target, link)
-        .with_context(|| format!("Failed to create symlink {} -> {}", link.display(), target.display()))
+    unix_fs::symlink(target, link).with_context(|| {
+        format!(
+            "Failed to create symlink {} -> {}",
+            link.display(),
+            target.display()
+        )
+    })
 }
 
 pub fn render_and_symlink_all() -> Result<Vec<String>> {
