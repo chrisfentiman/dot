@@ -26,6 +26,16 @@ enum Command {
         /// Name of the config to edit
         name: Option<String>,
     },
+    /// Show diff between current rendered configs and fresh template render
+    Diff {
+        /// Name of the config to diff (omit for interactive selection)
+        name: Option<String>,
+    },
+    /// Remove a config from dotf management
+    Remove {
+        /// Name of the config to remove (omit for interactive selection)
+        name: Option<String>,
+    },
     /// Pull latest, re-render templates, push local changes
     Sync,
     /// Manage and validate secrets schema
@@ -50,6 +60,8 @@ fn main() -> Result<()> {
         Command::Init => commands::init::run(),
         Command::Config { path } => commands::config::run(path),
         Command::Modify { name } => commands::modify::run(name),
+        Command::Diff { name } => commands::diff::run(name),
+        Command::Remove { name } => commands::remove::run(name),
         Command::Sync => commands::sync::run(),
         Command::Secrets { action } => commands::secrets::run(action),
         Command::Status => commands::status::run(),

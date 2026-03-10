@@ -9,22 +9,55 @@ pub fn run() -> Result<()> {
 
     println!("Pulling latest changes...");
     let pull_output = Command::new("git")
-        .args(["pull"])
+        .args(["pull", "--rebase"])
         .current_dir(&dotfiles_dir)
         .output()
         .context("Failed to run git pull")?;
 
     let pull_stdout = String::from_utf8_lossy(&pull_output.stdout);
     let pull_stderr = String::from_utf8_lossy(&pull_output.stderr);
+
     if !pull_stdout.trim().is_empty() {
         println!("{}", pull_stdout.trim());
     }
     if !pull_stderr.trim().is_empty() {
         println!("{}", pull_stderr.trim().dimmed());
     }
+
     if !pull_output.status.success() {
-        anyhow::bail!("git pull failed");
+        // Check for merge/rebase conflicts
+        let conflict_check = Command::new("git")
+            .args(["diff", "--name-only", "--diff-filter=U"])
+            .current_dir(&dotfiles_dir)
+            .output();
+
+        let has_conflicts = conflict_check
+            .map(|o| !o.stdout.is_empty())
+            .unwrap_or(false);
+
+        if has_conflicts {
+            let conflict_files = Command::new("git")
+                .args(["diff", "--name-only", "--diff-filter=U"])
+                .current_dir(&dotfiles_dir)
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+
+            println!();
+            println!("{} Merge conflicts detected in:", "✗".red().bold());
+            for file in conflict_files.lines() {
+                println!("    {}", file.yellow());
+            }
+            println!();
+            println!("Resolve conflicts, then run:");
+            println!("    cd ~/dotfiles && git rebase --continue");
+            println!("    dotf sync");
+            anyhow::bail!("git pull failed due to merge conflicts — resolve manually");
+        }
+
+        anyhow::bail!("git pull failed: {}", pull_stderr.trim());
     }
+
     println!("{} git pull done", "✓".green());
 
     println!("Re-rendering templates and updating symlinks...");

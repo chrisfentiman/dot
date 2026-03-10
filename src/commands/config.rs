@@ -96,7 +96,14 @@ pub fn run(path: Option<String>) -> Result<()> {
         );
     }
 
-    let target_str = format!("~/{filename}");
+    // Derive the symlink target from the original file's actual location
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+    let target_str = if let Ok(rel) = source_path.strip_prefix(&home) {
+        format!("~/{}", rel.display())
+    } else {
+        source_path.to_string_lossy().to_string()
+    };
+
     let mut symlinks = dotfiles::read_symlinks()?;
     symlinks
         .symlinks
