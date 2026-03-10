@@ -1,4 +1,5 @@
 mod commands;
+mod dotfiles;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
