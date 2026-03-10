@@ -18,6 +18,7 @@ pub fn run() -> Result<()> {
     ensure_pass()?;
     authenticate_pass()?;
     run_brewfile()?;
+    install_completions()?;
 
     let synced = dotfiles::render_and_symlink_all()?;
 
@@ -173,5 +174,36 @@ fn run_brewfile() -> Result<()> {
         anyhow::bail!("brew bundle install failed");
     }
     println!("{} brew bundle complete", "✓".green());
+    Ok(())
+}
+
+fn install_completions() -> Result<()> {
+    let home = dirs::home_dir().context("Could not determine home directory")?;
+    let completions_dir = home.join(".zfunc");
+    fs::create_dir_all(&completions_dir).context("Failed to create ~/.zfunc")?;
+
+    let completion_file = completions_dir.join("_dotf");
+    let output = Command::new("dotf").args(["completions", "zsh"]).output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            fs::write(&completion_file, out.stdout)
+                .context("Failed to write zsh completion file")?;
+            println!(
+                "{} Zsh completions installed to {}",
+                "✓".green(),
+                completion_file.display()
+            );
+            println!(
+                "  Add to ~/.zshrc if not already present: fpath=(~/.zfunc $fpath) && autoload -U compinit && compinit"
+            );
+        }
+        _ => {
+            println!(
+                "{} Could not install completions (dotf not in PATH yet — run after brew install)",
+                "·".dimmed()
+            );
+        }
+    }
     Ok(())
 }

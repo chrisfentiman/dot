@@ -2,7 +2,8 @@ mod commands;
 mod dotfiles;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
 
 #[derive(Parser)]
 #[command(name = "dotf", about = "Personal dotfiles manager", version)]
@@ -34,6 +35,12 @@ enum Command {
     },
     /// Show status of managed configs
     Status,
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 fn main() -> Result<()> {
@@ -46,5 +53,9 @@ fn main() -> Result<()> {
         Command::Sync => commands::sync::run(),
         Command::Secrets { action } => commands::secrets::run(action),
         Command::Status => commands::status::run(),
+        Command::Completions { shell } => {
+            generate(shell, &mut Cli::command(), "dotf", &mut std::io::stdout());
+            Ok(())
+        }
     }
 }
