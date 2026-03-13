@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dotf — dotfiles templates with secret injection</title>
-  <meta name="description" content="dotf manages your dotfiles as Handlebars templates. Secrets become placeholders mapped to your password manager. Git gets the templates. Your password manager keeps the values." />
+  <title>dotf — dotfiles with secrets, done right</title>
+  <meta name="description" content="Your dotfiles belong in git. Your secrets don't. dotf keeps both — templates in git, values in your password manager." />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -95,50 +95,33 @@
 
     /* ── Hero ─────────────────────────────────────── */
     .hero {
-      padding: 88px 0 80px;
+      padding: 96px 0 88px;
       border-top: none;
     }
 
-    .hero-label {
-      font-family: var(--mono);
-      font-size: 11px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--dim);
-      margin-bottom: 28px;
-    }
-
     .hero h1 {
-      font-size: clamp(28px, 4.5vw, 48px);
+      font-size: clamp(30px, 5vw, 54px);
       font-weight: 700;
-      letter-spacing: -0.03em;
-      line-height: 1.15;
+      letter-spacing: -0.035em;
+      line-height: 1.1;
       color: var(--text);
-      max-width: 720px;
-      margin-bottom: 20px;
-    }
-
-    .hero h1 code {
-      font-family: var(--mono);
-      font-size: 0.88em;
-      color: var(--muted);
-      font-weight: 400;
-      letter-spacing: -0.01em;
+      max-width: 760px;
+      margin-bottom: 24px;
     }
 
     .hero-sub {
-      font-size: 17px;
+      font-size: 18px;
       color: var(--muted);
-      max-width: 560px;
+      max-width: 580px;
       line-height: 1.65;
-      margin-bottom: 56px;
+      margin-bottom: 64px;
     }
 
     /* hero comparison */
     .hero-compare {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 16px;
+      gap: 20px;
     }
 
     .compare-col-label {
@@ -210,10 +193,6 @@
       white-space: pre;
     }
 
-    .code-body + .code-block {
-      margin-top: 10px;
-    }
-
     /* inline in code blocks */
     .t-secret { color: var(--red); }
     .t-ph     { color: var(--yellow); font-weight: 600; }
@@ -237,14 +216,65 @@
       font-weight: 700;
       letter-spacing: -0.025em;
       line-height: 1.2;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .sec-sub {
       font-size: 15px;
       color: var(--muted);
-      max-width: 520px;
+      max-width: 560px;
       line-height: 1.65;
+    }
+
+    /* ── Problem section ──────────────────────────── */
+    .problem-body {
+      margin-top: 48px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .problem-text {
+      padding-top: 8px;
+    }
+
+    .problem-p {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.75;
+      margin-bottom: 20px;
+    }
+
+    .problem-p strong { color: var(--text); font-weight: 500; }
+    .problem-p code {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      background: var(--border);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    .problem-callout {
+      margin-top: 28px;
+      padding: 18px 22px;
+      background: rgba(239,68,68,0.05);
+      border: 1px solid rgba(239,68,68,0.15);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .problem-callout strong { color: var(--red); font-weight: 500; }
+    .problem-callout code {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      background: var(--border);
+      padding: 1px 4px;
+      border-radius: 3px;
     }
 
     /* ── Steps ────────────────────────────────────── */
@@ -288,6 +318,15 @@
       font-size: 13px;
       color: var(--muted);
       line-height: 1.65;
+    }
+
+    .step-body code {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      background: var(--border);
+      padding: 1px 4px;
+      border-radius: 3px;
     }
 
     /* ── Install ──────────────────────────────────── */
@@ -566,6 +605,7 @@
       .hero { padding: 60px 0 56px; }
 
       .hero-compare { grid-template-columns: 1fr; }
+      .problem-body { grid-template-columns: 1fr; }
       .steps { grid-template-columns: 1fr; }
       .backends { grid-template-columns: 1fr; }
 
@@ -603,21 +643,20 @@
 <!-- Hero -->
 <section class="hero">
   <div class="container">
-    <p class="hero-label">dotf · dotfiles manager · written in Rust</p>
-    <h1>Templates in git.<br>Secrets in your password manager.<br><code>dotf</code> renders both into place.</h1>
-    <p class="hero-sub">dotf replaces secret values in your config files with <code style="font-family:var(--mono);font-size:0.9em;color:var(--yellow)">{{PLACEHOLDERS}}</code> that map to URIs in your password manager. At sync time it fetches and injects them. Git never sees the values.</p>
+    <h1>Your dotfiles belong in git.<br>Your secrets don't.</h1>
+    <p class="hero-sub">dotf splits them. Templates go in git. Secret values stay in your password manager. On any machine, <code style="font-family:var(--mono);font-size:0.88em;color:var(--text)">dotf sync</code> fetches and injects them.</p>
 
     <div class="hero-compare">
       <!-- left: before -->
       <div>
         <p class="compare-col-label">
           <span class="compare-dot" style="background:var(--red)"></span>
-          without dotf
+          the problem
         </p>
         <div class="code-block">
           <div class="code-header">
             <span class="code-fname">~/.gitconfig</span>
-            <span class="code-badge badge-bad">committed to git</span>
+            <span class="code-badge badge-bad">can't commit this</span>
           </div>
           <div class="code-body"><span class="t-muted">[user]</span>
   name  = Chris Fentiman
@@ -626,7 +665,8 @@
 <span class="t-muted">[github]</span>
   token = <span class="t-secret">ghp_A1B2C3D4E5F6G7H8</span>
 
-<span class="t-cmt"># ↑ real values — now in git history</span></div>
+<span class="t-cmt"># real values — keep repo private or strip them</span>
+<span class="t-cmt"># new machine = two hours hunting what goes where</span></div>
         </div>
       </div>
 
@@ -662,32 +702,92 @@
   </div>
 </section>
 
+<!-- Problem -->
+<section>
+  <div class="container fade">
+    <p class="sec-label">The problem</p>
+    <h2 class="sec-title">Every dotfiles repo eventually hits this wall.</h2>
+
+    <div class="problem-body">
+      <div class="problem-text">
+        <p class="problem-p">You built the perfect shell setup. You want to share it, use it on every machine, clone it in 30 seconds on a new laptop. So you push it to GitHub.</p>
+
+        <p class="problem-p">Then you grep your configs and find your email in <code>.gitconfig</code>, an API token in <code>.npmrc</code>, a registry URL with credentials in <code>.cargo/config.toml</code>, an internal hostname in <code>.ssh/config</code>. <strong>The repo has to stay private, or the secrets have to come out.</strong></p>
+
+        <p class="problem-p">The folk solution is a <code>.localrc</code> or <code>.bash_profile_priv</code> — a file you load but never commit. It works, barely. But every new machine means manually hunting down what goes in it. The one-command setup is now a two-hour session with your old laptop open next to the new one.</p>
+
+        <div class="problem-callout">
+          <strong>73.6% of public dotfiles repos leak sensitive information.</strong> 9,452 private SSH keys. 11,758 repos with API keys. GitHub's secret scanning catches some of it — after it's already in your commit history, where deleting it doesn't help.
+          <br><br>
+          The leaks aren't from carelessness. They're from dotfiles that were private, then someone made public. Or configs copied between machines where one value slipped through.
+        </div>
+      </div>
+
+      <div>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-fname">~/.zshrc</span>
+            <span class="code-badge badge-bad">the classic workaround</span>
+          </div>
+          <div class="code-body"><span class="t-cmt"># source secrets from a file we never commit</span>
+<span class="t-muted">[ -f ~/.localrc ] && source ~/.localrc</span>
+
+<span class="t-cmt"># ~/.localrc on the old machine:</span>
+<span class="t-muted">export GITHUB_TOKEN=ghp_A1B2C3D4E5F6G7H8</span>
+<span class="t-muted">export NPM_TOKEN=npm_xyz...</span>
+<span class="t-muted">export AWS_ACCESS_KEY_ID=AKIA...</span></div>
+        </div>
+        <p style="font-size:12px;color:var(--dim);margin-top:10px;line-height:1.6;font-family:var(--mono)">
+          Problem: .localrc lives only on one machine. New machine = start from scratch. Nothing documents what secrets are needed or where they come from.
+        </p>
+
+        <div class="code-block" style="margin-top:20px">
+          <div class="code-header">
+            <span class="code-fname">new machine, day one</span>
+            <span class="code-badge badge-bad">the broken promise</span>
+          </div>
+          <div class="code-body"><span class="t-cmt"># you clone your dotfiles</span>
+<span class="t-muted">$ git clone git@github.com:you/dotfiles.git</span>
+
+<span class="t-cmt"># you run your install script</span>
+<span class="t-muted">$ ./install.sh</span>
+
+<span class="t-cmt"># and then spend two hours figuring out</span>
+<span class="t-cmt"># which secrets need to go in .localrc</span>
+<span class="t-cmt"># and what their values actually were</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- How it works -->
 <section>
   <div class="container fade">
-    <p class="sec-label">How it works</p>
+    <p class="sec-label">How dotf fixes this</p>
     <h2 class="sec-title">Three commands cover the full lifecycle.</h2>
+    <p class="sec-sub">dotf knows which secrets each config needs, where to get them, and how to put everything in place. On any machine.</p>
 
     <div class="steps">
       <div class="step">
-        <p class="step-num">01</p>
+        <p class="step-num">01 — once per file</p>
         <p class="step-cmd">dotf config ~/.gitconfig</p>
-        <h3 class="step-title">Convert</h3>
-        <p class="step-body">Shows you the file contents. You identify the secret values. dotf replaces them with <code style="font-family:var(--mono);font-size:11px;color:var(--yellow)">{{PLACEHOLDERS}}</code>, writes the template, and asks for the password manager URI for each one.</p>
+        <h3 class="step-title">Extract</h3>
+        <p class="step-body">Shows you the file. You identify the secret values. dotf replaces them with <code>{{PLACEHOLDERS}}</code>, writes the template to your dotfiles repo, and records where each secret lives in your password manager.</p>
       </div>
 
       <div class="step">
-        <p class="step-num">02</p>
+        <p class="step-num">02 — everyday</p>
         <p class="step-cmd">dotf sync</p>
         <h3 class="step-title">Sync</h3>
-        <p class="step-body">Fetches each secret from your password manager. Renders all templates. Writes the real files (gitignored). Symlinks them into place. Commits and pushes the templates.</p>
+        <p class="step-body">Fetches each secret from your password manager. Renders all templates. Writes the real files — gitignored, never committed. Symlinks them into place. Commits and pushes the templates.</p>
       </div>
 
       <div class="step">
-        <p class="step-num">03</p>
+        <p class="step-num">03 — new machine</p>
         <p class="step-cmd">dotf init</p>
         <h3 class="step-title">Bootstrap</h3>
-        <p class="step-body">New machine. Clones your dotfiles repo. Reads <code style="font-family:var(--mono);font-size:11px">.secrets.toml</code> to check which password manager CLIs are needed. Renders everything. Done.</p>
+        <p class="step-body">Clones your dotfiles repo. Reads <code>.secrets.toml</code> to check which password manager CLIs are needed. Renders everything. Symlinks everything. Done — no manual hunting.</p>
       </div>
     </div>
   </div>
@@ -698,7 +798,7 @@
   <div class="container fade">
     <p class="sec-label">Install</p>
     <h2 class="sec-title">Homebrew. Two commands.</h2>
-    <p class="sec-sub">macOS. Requires a supported password manager CLI — install whichever one you use before running <code style="font-family:var(--mono);font-size:0.9em">dotf init</code>.</p>
+    <p class="sec-sub">macOS. Requires whichever password manager CLI you use — install it before running <code style="font-family:var(--mono);font-size:0.9em">dotf init</code>.</p>
 
     <div class="install-rows">
       <div class="install-row">
@@ -718,7 +818,7 @@
   <div class="container fade">
     <p class="sec-label">Secret backends</p>
     <h2 class="sec-title">Works with whatever you already use.</h2>
-    <p class="sec-sub">dotf routes each secret by URI scheme. You can mix backends in the same <code style="font-family:var(--mono);font-size:0.9em">.secrets.toml</code>.</p>
+    <p class="sec-sub">dotf routes each secret by URI scheme. Mix backends in the same <code style="font-family:var(--mono);font-size:0.9em">.secrets.toml</code> — personal secrets in 1Password, work secrets in Bitwarden, CI values from environment variables.</p>
 
     <div class="backends">
       <div class="backend">
@@ -733,7 +833,7 @@
       </div>
       <div class="backend">
         <p class="backend-name">Bitwarden</p>
-        <p class="backend-how">bw get &lt;field&gt; &lt;item&gt; — requires BW_SESSION env var</p>
+        <p class="backend-how">bw get &lt;field&gt; &lt;item&gt; — requires BW_SESSION</p>
         <code class="backend-uri">bw://item-name/field</code>
       </div>
       <div class="backend">
@@ -805,20 +905,24 @@
 <section>
   <div class="container fade">
     <p class="sec-label">vs. the alternatives</p>
-    <h2 class="sec-title">Other tools exist. Here's the difference.</h2>
+    <h2 class="sec-title">Other tools exist. Here's the honest difference.</h2>
 
     <div class="alts">
       <div class="alt">
         <p class="alt-name">chezmoi</p>
-        <p class="alt-body">chezmoi has secret integration. It also has its own source directory layout, its own template dialect (Go templates), and its own config format. <strong>You're adopting chezmoi's model of how dotfiles should work, not layering on top of yours.</strong> dotf has one config file (<code>.secrets.toml</code>) and uses Handlebars. Your dotfiles directory stays a normal git repo.</p>
+        <p class="alt-body">chezmoi has secret integration. But you're also adopting chezmoi's source directory layout, its own template dialect (Go templates), and its own config format. <strong>Using chezmoi means migrating your dotfiles into chezmoi's model</strong> — not layering on top of a normal git repo. dotf has one config file (<code>.secrets.toml</code>) and uses Handlebars. Your dotfiles directory stays a plain git repo you can read without knowing dotf at all.</p>
       </div>
       <div class="alt">
         <p class="alt-name">yadm</p>
-        <p class="alt-body">yadm encrypts whole files with GPG. You can't encrypt just the email field in a <code>.gitconfig</code> — you encrypt the whole file or you don't encrypt it. That means the unencrypted version never exists in your repo, which creates friction on every new machine. <strong>dotf doesn't encrypt anything.</strong> Your password manager already does that. dotf just asks it at the right moment.</p>
+        <p class="alt-body">yadm's secret handling is GPG encryption of whole files. You can't encrypt just the email field in a <code>.gitconfig</code> — you have to encrypt the whole file. The unencrypted version never lives in your repo, so <code>git diff</code> and <code>git log</code> are useless for those files. <strong>dotf doesn't encrypt anything.</strong> Your password manager already handles that. dotf just asks it at sync time, so the readable template stays in git and the real file stays out.</p>
       </div>
       <div class="alt">
         <p class="alt-name">GNU stow</p>
-        <p class="alt-body">stow is pure symlink management. It's elegant and it works. <strong>It has nothing to say about secrets.</strong> If your configs have no secret values, use stow — it's simpler. If they do, you need something between the raw file and git. dotf is essentially stow with a template+inject layer and git sync built in.</p>
+        <p class="alt-body">stow is pure symlink management. It's elegant and it works. <strong>It has nothing to say about secrets.</strong> If your configs have no secret values baked in — no tokens, no emails, no credentials — use stow. It's simpler. If they do, you need something between the raw file and git. dotf is stow with a template-render-and-inject step and git sync built in.</p>
+      </div>
+      <div class="alt">
+        <p class="alt-name">git-crypt / git-secret</p>
+        <p class="alt-body">These encrypt specific files in your repo. The encrypted blob is opaque — <code>git diff</code> shows binary noise, <code>git log</code> shows nothing meaningful. Key management is its own problem: rotate your GPG key and every repo that uses it is broken until you re-encrypt. <strong>And the decrypted value still has to go somewhere on the new machine</strong> — you've moved the secret-distribution problem, not solved it. dotf routes to your password manager, which you already have on every machine.</p>
       </div>
     </div>
   </div>
@@ -882,7 +986,7 @@
         { c: 'muted', v: 'Does this file contain a secret to inject? [y/n]: y' },
         { c: 'muted', v: 'Paste the exact secret value: chris@example.com' },
         { c: 'muted', v: 'Placeholder name: GIT_EMAIL' },
-        { c: 'muted', v: 'Secret URI: op://personal/github/email' },
+        { c: 'muted', v: 'Secret URI (e.g. op://... pass://... env://...): op://personal/github/email' },
         { c: 'muted', v: 'Another secret? [y/n]: n' },
         { c: 'dim',   v: '' },
         { c: 'ok',    v: '✓  Template written to ~/dotfiles/configs/.gitconfig.tmpl' },
@@ -891,7 +995,7 @@
       ]
     },
     sync: {
-      desc: '<strong>dotf sync</strong> — the everyday command. Pulls with rebase, fetches secrets, re-renders all templates, updates symlinks, commits templates (never the rendered files), and pushes.',
+      desc: '<strong>dotf sync</strong> — the everyday command. Pulls with rebase, fetches secrets from your password manager, re-renders all templates, updates symlinks, commits templates (never the rendered files), and pushes.',
       lines: [
         { c: 'cmd',   v: 'dotf sync' },
         { c: 'dim',   v: '' },
@@ -912,7 +1016,7 @@
       ]
     },
     init: {
-      desc: '<strong>dotf init</strong> — first-time setup. Clones or creates your dotfiles repo, reads <code>.secrets.toml</code> to check which backend CLIs are needed, runs your Brewfile if one exists, then renders all templates and lays down symlinks.',
+      desc: '<strong>dotf init</strong> — first-time setup on a new machine. Clones your dotfiles repo, reads <code>.secrets.toml</code> to check which backend CLIs are installed, runs your Brewfile if one exists, then renders all templates and lays down symlinks. No manual hunting for what secrets go where.',
       lines: [
         { c: 'cmd',   v: 'dotf init' },
         { c: 'dim',   v: '' },
@@ -951,7 +1055,7 @@
       ]
     },
     secrets: {
-      desc: '<strong>dotf secrets list</strong> — shows every placeholder, its URI, and which backend will serve it. Also: <code>validate</code> to test all backends live, <code>add &lt;name&gt; &lt;uri&gt;</code> and <code>remove &lt;name&gt;</code>.',
+      desc: '<strong>dotf secrets list</strong> — shows every placeholder, its URI, and which backend will serve it. Use <code>validate</code> to test all backends live, <code>add &lt;name&gt; &lt;uri&gt;</code> and <code>remove &lt;name&gt;</code> to manage individual mappings.',
       lines: [
         { c: 'cmd',   v: 'dotf secrets list' },
         { c: 'dim',   v: '' },
@@ -1034,7 +1138,6 @@
       } else {
         span.textContent = line.v;
         if (i === 1) {
-          // remove cursor when first output line is about to show
           requestAnimationFrame(() => {
             const cur = dout.querySelector('.demo-cursor');
             if (cur) cur.remove();
