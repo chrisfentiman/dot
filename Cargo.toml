@@ -1,6 +1,6 @@
 [package]
 name = "dot"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
 description = "Personal dotfiles manager with Proton Pass secret injection"
 license = "MIT"
