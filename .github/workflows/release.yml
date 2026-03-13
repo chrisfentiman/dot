@@ -62,16 +62,16 @@ jobs:
           ARM_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dotf-aarch64-macos"
           X86_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dotf-x86_64-macos"
 
-          # Retry until assets are available (can lag after job completes)
+          # Retry until assets are available and non-empty (-L to follow redirects)
           for i in {1..10}; do
-            ARM_SHA=$(curl -fsSL "$ARM_URL" | sha256sum | awk '{print $1}')
+            ARM_SHA=$(curl -fsSL -L "$ARM_URL" | sha256sum | awk '{print $1}')
             [ -n "$ARM_SHA" ] && [ "$ARM_SHA" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && break
             echo "Waiting for ARM asset... ($i)"
             sleep 15
           done
 
           for i in {1..10}; do
-            X86_SHA=$(curl -fsSL "$X86_URL" | sha256sum | awk '{print $1}')
+            X86_SHA=$(curl -fsSL -L "$X86_URL" | sha256sum | awk '{print $1}')
             [ -n "$X86_SHA" ] && [ "$X86_SHA" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && break
             echo "Waiting for x86 asset... ($i)"
             sleep 15
@@ -81,6 +81,9 @@ jobs:
             echo "ERROR: Could not fetch release assets after retries"
             exit 1
           fi
+
+          echo "ARM_SHA=$ARM_SHA"
+          echo "X86_SHA=$X86_SHA"
 
           # Write formula using printf to avoid heredoc YAML conflicts
           printf 'class Dot < Formula\n' > Formula/dot.rb
