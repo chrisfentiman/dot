@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use dialoguer::{Select, theme::ColorfulTheme};
-use std::process::Command;
 
 use crate::dotfiles;
+use crate::runner::Runner;
 
-pub fn run(name: Option<String>) -> Result<()> {
+pub fn run(runner: &dyn Runner, name: Option<String>) -> Result<()> {
     let symlinks = dotfiles::read_symlinks()?;
 
     let config_name = match name {
@@ -14,7 +14,9 @@ pub fn run(name: Option<String>) -> Result<()> {
             let mut names: Vec<String> = symlinks.symlinks.keys().cloned().collect();
             names.sort();
             if names.is_empty() {
-                anyhow::bail!("No managed configs found. Run `dot config <path>` to add one.");
+                anyhow::bail!(
+                    "No managed configs found. Run `dotf config <path>` to add one."
+                );
             }
             let selection = Select::with_theme(&ColorfulTheme::default())
                 .with_prompt("Select config to modify")
@@ -34,12 +36,15 @@ pub fn run(name: Option<String>) -> Result<()> {
     }
 
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-    let status = Command::new(&editor)
-        .arg(&template_path)
-        .status()
+    let template_str = template_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Template path is not valid UTF-8"))?;
+
+    let result = runner
+        .run(&editor, &[template_str], None)
         .with_context(|| format!("Failed to open editor: {editor}"))?;
 
-    if !status.success() {
+    if !result.success() {
         anyhow::bail!("Editor exited with non-zero status");
     }
 
@@ -63,4 +68,53 @@ pub fn run(name: Option<String>) -> Result<()> {
 
     println!("{} {} updated", "✓".green().bold(), config_name.cyan());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dotfiles::SymlinksFile;
+    use crate::runner::MockRunner;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    #[test]
+    fn modify_editor_failure_returns_error() {
+        let _g = crate::env_lock();
+        let tmp = TempDir::new().unwrap();
+
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+            std::env::set_var("EDITOR", "false-editor");
+        }
+
+        let dotfiles_dir = tmp.path().join("dotfiles");
+        std::fs::create_dir_all(dotfiles_dir.join("configs")).unwrap();
+        std::fs::write(dotfiles_dir.join("configs/gitconfig.tmpl"), "key = value").unwrap();
+
+        let mut map = HashMap::new();
+        map.insert("gitconfig".to_string(), "~/.gitconfig".to_string());
+        let sf = SymlinksFile { symlinks: map };
+        std::fs::write(
+            dotfiles_dir.join(".symlinks.toml"),
+            toml::to_string_pretty(&sf).unwrap(),
+        )
+        .unwrap();
+
+        let tmpl_path = dotfiles_dir.join("configs/gitconfig.tmpl");
+        let runner = MockRunner::new().on(
+            "false-editor",
+            &[tmpl_path.to_str().unwrap()],
+            "",
+            false,
+        );
+
+        let err = run(&runner, Some("gitconfig".to_string())).unwrap_err();
+        assert!(err.to_string().contains("Editor exited"));
+
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("EDITOR");
+        }
+    }
 }

@@ -1,25 +1,25 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use dialoguer::{Input, theme::ColorfulTheme};
 use std::fs;
-use std::process::Command;
 use which::which;
 
 use crate::dotfiles;
+use crate::runner::Runner;
 
-pub fn run() -> Result<()> {
+pub fn run(runner: &dyn Runner) -> Result<()> {
     println!("{}", "┌─────────────────────────────────────┐".cyan());
     println!("{}", "│        dotf — dotfiles manager       │".cyan());
     println!("{}", "│    secret injection via pass/op/bw   │".cyan());
     println!("{}", "└─────────────────────────────────────┘".cyan());
     println!();
 
-    setup_dotfiles_dir()?;
+    setup_dotfiles_dir(runner)?;
     hint_secret_backends()?;
     #[cfg(target_os = "macos")]
-    run_brewfile()?;
+    run_brewfile(runner)?;
     #[cfg(unix)]
-    install_completions()?;
+    install_completions(runner)?;
 
     let synced = dotfiles::render_and_symlink_all()?;
 
@@ -28,7 +28,7 @@ pub fn run() -> Result<()> {
     if synced.is_empty() {
         println!(
             "  No configs symlinked yet. Run {} to add one.",
-            "dot config <path>".cyan()
+            "dotf config <path>".cyan()
         );
     } else {
         println!("  Symlinked configs:");
@@ -40,7 +40,7 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-fn setup_dotfiles_dir() -> Result<()> {
+fn setup_dotfiles_dir(runner: &dyn Runner) -> Result<()> {
     let dotfiles = dotfiles::dotfiles_dir()?;
 
     if dotfiles.exists() {
@@ -60,17 +60,12 @@ fn setup_dotfiles_dir() -> Result<()> {
         fs::create_dir_all(&dotfiles)
             .with_context(|| format!("Failed to create {}", dotfiles.display()))?;
 
-        let init_status = Command::new("git")
-            .args(["init", "-b", "main"])
-            .current_dir(&dotfiles)
-            .status()
-            .context("Failed to run git init")?;
-        if !init_status.success() {
-            Command::new("git")
-                .args(["init"])
-                .current_dir(&dotfiles)
-                .status()
-                .context("Failed to run git init")?;
+        let init = runner.run("git", &["init", "-b", "main"], Some(&dotfiles))?;
+        if !init.success() {
+            let init2 = runner.run("git", &["init"], Some(&dotfiles))?;
+            if !init2.success() {
+                anyhow::bail!("git init failed");
+            }
         }
 
         fs::create_dir_all(dotfiles.join("configs")).context("Failed to create configs dir")?;
@@ -83,19 +78,22 @@ fn setup_dotfiles_dir() -> Result<()> {
 
         if which("gh").is_ok() {
             println!("Creating private GitHub repo dotfiles...");
-            let source = dotfiles.to_string_lossy();
-            let gh_status = Command::new("gh")
-                .args([
+            let source = dotfiles
+                .to_str()
+                .ok_or_else(|| anyhow!("dotfiles path is not valid UTF-8"))?;
+            let gh = runner.run(
+                "gh",
+                &[
                     "repo",
                     "create",
                     "dotfiles",
                     "--private",
-                    &format!("--source={}", source),
+                    &format!("--source={source}"),
                     "--remote=origin",
-                ])
-                .status()
-                .context("Failed to run gh repo create")?;
-            if gh_status.success() {
+                ],
+                None,
+            )?;
+            if gh.success() {
                 println!("{} GitHub repo created and remote set", "✓".green());
             } else {
                 println!(
@@ -111,11 +109,11 @@ fn setup_dotfiles_dir() -> Result<()> {
         }
     } else {
         println!("Cloning {}...", url);
-        let clone_status = Command::new("git")
-            .args(["clone", &url, dotfiles.to_str().unwrap()])
-            .status()
-            .context("Failed to run git clone")?;
-        if !clone_status.success() {
+        let dotfiles_str = dotfiles
+            .to_str()
+            .ok_or_else(|| anyhow!("dotfiles path is not valid UTF-8"))?;
+        let clone = runner.run("git", &["clone", &url, dotfiles_str], None)?;
+        if !clone.success() {
             anyhow::bail!("git clone failed");
         }
         println!("{} Cloned dotfiles to {}", "✓".green(), dotfiles.display());
@@ -125,7 +123,6 @@ fn setup_dotfiles_dir() -> Result<()> {
 }
 
 fn hint_secret_backends() -> Result<()> {
-    // Read which backends are actually used in the secrets file and check their CLIs
     let secrets = dotfiles::read_secrets().unwrap_or_default();
     let mut needs_pass = false;
     let mut needs_op = false;
@@ -141,7 +138,6 @@ fn hint_secret_backends() -> Result<()> {
         }
     }
 
-    // If no secrets configured yet, nothing to check
     if !needs_pass && !needs_op && !needs_bw {
         println!(
             "{} No secret backends configured yet — add secrets with {}",
@@ -193,7 +189,7 @@ fn check_cli(bin: &str, name: &str, install_hint: &str) -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-fn run_brewfile() -> Result<()> {
+fn run_brewfile(runner: &dyn Runner) -> Result<()> {
     let brewfile = dotfiles::dotfiles_dir()?.join("Brewfile");
     if !brewfile.exists() {
         println!("{} No Brewfile found, skipping brew bundle", "·".dimmed());
@@ -201,15 +197,15 @@ fn run_brewfile() -> Result<()> {
     }
 
     println!("Running brew bundle...");
-    let status = Command::new("brew")
-        .args([
-            "bundle",
-            "install",
-            &format!("--file={}", brewfile.display()),
-        ])
-        .status()
-        .context("Failed to run brew bundle")?;
-    if !status.success() {
+    let brewfile_str = brewfile
+        .to_str()
+        .ok_or_else(|| anyhow!("Brewfile path is not valid UTF-8"))?;
+    let result = runner.run(
+        "brew",
+        &["bundle", "install", &format!("--file={brewfile_str}")],
+        None,
+    )?;
+    if !result.success() {
         anyhow::bail!("brew bundle install failed");
     }
     println!("{} brew bundle complete", "✓".green());
@@ -217,17 +213,17 @@ fn run_brewfile() -> Result<()> {
 }
 
 #[cfg(unix)]
-fn install_completions() -> Result<()> {
+fn install_completions(runner: &dyn Runner) -> Result<()> {
     let home = dirs::home_dir().context("Could not determine home directory")?;
     let completions_dir = home.join(".zfunc");
     fs::create_dir_all(&completions_dir).context("Failed to create ~/.zfunc")?;
 
     let completion_file = completions_dir.join("_dotf");
-    let output = Command::new("dotf").args(["completions", "zsh"]).output();
+    let result = runner.run("dotf", &["completions", "zsh"], None);
 
-    match output {
-        Ok(out) if out.status.success() => {
-            fs::write(&completion_file, out.stdout)
+    match result {
+        Ok(out) if out.success() => {
+            dotfiles::atomic_write(&completion_file, out.stdout.as_bytes(), 0o644)
                 .context("Failed to write zsh completion file")?;
             println!(
                 "{} Zsh completions installed to {}",
