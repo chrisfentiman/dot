@@ -1,13 +1,12 @@
-name: CI
+name: PR
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
-  test:
+  check:
+    name: Lint & Test
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
