@@ -35,7 +35,9 @@ pub fn run(runner: &dyn Runner, name: Option<String>) -> Result<()> {
         anyhow::bail!("Template not found: {}", template_path.display());
     }
 
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".to_string());
     let template_str = template_path
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Template path is not valid UTF-8"))?;
