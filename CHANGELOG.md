@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0](https://github.com/chrisfentiman/dot/compare/v0.5.0...v0.6.0) (2026-03-13)
+
+
+### Features
+
+* add --dir flag for project-local dotfiles, replace Handlebars with single-pass renderer ([bed95b0](https://github.com/chrisfentiman/dot/commit/bed95b0e6d307d3df60ebb27c8adba428acd5ca7))
+* rename binary dot→dotf, add similar diff, zeroize secrets, Password prompt, dynamic status widths ([f5fcf4c](https://github.com/chrisfentiman/dot/commit/f5fcf4c680ec65655a3a94709e637764725f2c44))
+* wire Runner trait into sync, init, and modify commands ([e035011](https://github.com/chrisfentiman/dot/commit/e035011c31ca3598272dddeb88e6be006d46f735))
+
+
+### Bug Fixes
+
+* atomic writes for secrets/symlinks toml, hard-fail on secret fetch errors, validate symlink destinations ([e39f5f3](https://github.com/chrisfentiman/dot/commit/e39f5f3bc5a11359ed4037806273339b1bff99c9))
+* **dotfiles:** harden template rendering, TOML parsing, and atomic writes ([2b6911c](https://github.com/chrisfentiman/dot/commit/2b6911c469b10c79e780791fdd547f53d0013460))
+* **modify:** check VISUAL before EDITOR per Unix convention ([79d652c](https://github.com/chrisfentiman/dot/commit/79d652c2038c55ce063074a7f60eff11dc6c2d1f))
+* **remove:** check config existence before empty symlinks guard ([afd83d5](https://github.com/chrisfentiman/dot/commit/afd83d51e1cd10dcc85037b2e459648894949d4c))
+* **secrets:** validate placeholder names and URI schemes before storage ([09f28bd](https://github.com/chrisfentiman/dot/commit/09f28bdb2920241a1e41ed2e6e476cafdb4b5efa))
+* **status:** detect dangling symlinks as broken instead of wrong target ([11013ae](https://github.com/chrisfentiman/dot/commit/11013ae4c159847746dadf5887a920557e661d51))
+* **sync:** harden git workflow and improve commit logic ([61e8ac7](https://github.com/chrisfentiman/dot/commit/61e8ac70fc1836bbcccbc5a5c1f887c0a79c8aec))
+* **sync:** split git add into tracked update and new file staging ([3824427](https://github.com/chrisfentiman/dot/commit/382442786100447fbb9beb6102e4c998863a6bbd))
+* **tests:** add env_lock() to all tests that mutate environment variables ([fda3019](https://github.com/chrisfentiman/dot/commit/fda3019b22b1c7ef06dab03b5f19557eae445289))
+
 ## [0.4.0] - 2026-03-13
 
 ### Added
