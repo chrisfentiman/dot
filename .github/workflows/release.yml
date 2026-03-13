@@ -76,7 +76,7 @@ jobs:
           cd target/${{ matrix.target }}/release
           tar czf ../../../dotf-${{ matrix.target }}.tar.gz dotf
           cd ../../..
-          shasum -a 256 dotf-${{ matrix.target }}.tar.gz > dotf-${{ matrix.target }}.tar.gz.sha256
+          sha256sum dotf-${{ matrix.target }}.tar.gz > dotf-${{ matrix.target }}.tar.gz.sha256 || shasum -a 256 dotf-${{ matrix.target }}.tar.gz > dotf-${{ matrix.target }}.tar.gz.sha256
 
       - uses: actions/upload-artifact@v4
         with:
