@@ -556,6 +556,20 @@
       margin-bottom: 10px;
     }
 
+    .alt-verdict {
+      font-family: var(--mono);
+      font-size: 11px;
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: 10px;
+      font-weight: 400;
+    }
+
+    .verdict-good { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+    .verdict-ok { background: rgba(234,179,8,0.1); color: var(--yellow); border: 1px solid rgba(234,179,8,0.2); }
+    .verdict-none { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+
     .alt-body {
       font-size: 14px;
       color: var(--muted);
@@ -565,6 +579,75 @@
 
     .alt-body strong { color: var(--text); font-weight: 500; }
     .alt-body code { font-family: var(--mono); font-size: 12px; color: var(--text); background: var(--border); padding: 1px 4px; border-radius: 3px; }
+
+    .alt-tags {
+      display: flex;
+      gap: 6px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .alt-tag {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    /* Feature matrix */
+    .matrix-wrap {
+      margin-top: 48px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .matrix th {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      text-align: left;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .matrix th:first-child { color: var(--text); }
+
+    .matrix td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      vertical-align: top;
+    }
+
+    .matrix tr:last-child td { border-bottom: none; }
+
+    .matrix tr:hover td { background: rgba(255,255,255,0.015); }
+
+    .matrix .tool-name {
+      font-family: var(--mono);
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .matrix .yes { color: var(--green); }
+    .matrix .no { color: var(--dim); }
+    .matrix .partial { color: var(--yellow); }
+    .matrix .highlight td { background: rgba(99,102,241,0.04); }
+    .matrix .highlight .tool-name { color: var(--accent); }
 
     /* ── Footer ───────────────────────────────────── */
     footer {
@@ -901,28 +984,212 @@
   </div>
 </section>
 
+<!-- Project-local mode -->
+<section>
+  <div class="container fade">
+    <p class="sec-label">project-local mode</p>
+    <h2 class="sec-title">Same mechanism. Project scope.</h2>
+    <p class="sec-sub">The <code style="font-family:var(--mono);font-size:13px;background:var(--border);padding:2px 6px;border-radius:3px;">--dir</code> flag switches dotf from global dotfiles to project-scoped configs. Templates and URI mappings commit to your project repo. Rendered files with real values stay out.</p>
+
+    <div class="problem-body" style="margin-top:40px;">
+      <div class="problem-text">
+        <p class="problem-p">Every project has config files with secrets: <code>.env</code> with database credentials, <code>.claude/settings.json</code> with API keys, <code>docker-compose.override.yml</code> with registry tokens.</p>
+        <p class="problem-p">The usual fix? <strong>"Ask Sarah for the env file"</strong> in Slack. No schema, no validation, no way to know if your copy is stale. New contributors waste time chasing down values that could be fetched from a password manager in seconds.</p>
+        <p class="problem-p">dotf local mode commits the <em>shape</em> of your config (the template + URI mappings) so every contributor can render their own copy from their own password manager.</p>
+        <div class="problem-callout" style="margin-top:20px;">
+          <strong>Security boundary:</strong> In local mode, symlink targets must resolve within the project root. Absolute paths and <code>~</code> paths are rejected. A project's <code>.symlinks.toml</code> cannot write outside its own directory.
+        </div>
+      </div>
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-fname">project workflow</span>
+          <span class="code-badge badge-good">local mode</span>
+        </div>
+        <div class="code-body"><span class="t-cmt"># set up local mode in your project</span>
+<span class="t-muted">$</span> <span class="t-key">dotf --dir . init</span>
+
+<span class="t-cmt"># add .env with secrets extracted</span>
+<span class="t-muted">$</span> <span class="t-key">dotf --dir . config .env</span>
+
+<span class="t-cmt"># render templates (no git operations)</span>
+<span class="t-muted">$</span> <span class="t-key">dotf --dir . sync</span>
+
+<span class="t-cmt"># result:</span>
+<span class="t-muted">myproject/</span>
+  <span class="t-muted">.dotf/configs/</span>
+    <span class="t-val">.env.tmpl</span>         <span class="t-cmt">&larr; committed</span>
+    <span class="t-cmt">.env</span>              <span class="t-cmt">&larr; rendered, gitignored</span>
+  <span class="t-val">.secrets.toml</span>      <span class="t-cmt">&larr; URIs only</span>
+  <span class="t-muted">.env</span> &rarr; <span class="t-val">.dotf/configs/.env</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- Alternatives -->
 <section>
   <div class="container fade">
     <p class="sec-label">vs. the alternatives</p>
     <h2 class="sec-title">Other tools exist. Here's the honest difference.</h2>
+    <p class="sec-sub">Every dotfiles tool makes trade-offs. The question is which trade-offs matter for your setup.</p>
 
-    <div class="alts">
+    <div class="matrix-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>Tool</th>
+            <th>Templates</th>
+            <th>Secrets</th>
+            <th>Symlinks</th>
+            <th>Project-local</th>
+            <th>Runtime</th>
+            <th>Learning curve</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="highlight">
+            <td class="tool-name">dotf</td>
+            <td class="yes">{{VAR}} syntax</td>
+            <td class="yes">Declarative .secrets.toml</td>
+            <td class="yes">.symlinks.toml</td>
+            <td class="yes">--dir flag</td>
+            <td>Rust binary</td>
+            <td class="yes">Low</td>
+          </tr>
+          <tr>
+            <td class="tool-name">chezmoi</td>
+            <td class="partial">Go text/template</td>
+            <td class="partial">Embedded in templates</td>
+            <td class="no">File copies</td>
+            <td class="no">--</td>
+            <td>Go binary</td>
+            <td class="partial">Medium-high</td>
+          </tr>
+          <tr>
+            <td class="tool-name">GNU Stow</td>
+            <td class="no">--</td>
+            <td class="no">--</td>
+            <td class="yes">Symlink farm</td>
+            <td class="no">--</td>
+            <td>Perl</td>
+            <td class="yes">Very low</td>
+          </tr>
+          <tr>
+            <td class="tool-name">yadm</td>
+            <td class="partial">Jinja2 (limited)</td>
+            <td class="partial">Git-crypt (whole file)</td>
+            <td class="no">--</td>
+            <td class="no">--</td>
+            <td>Bash script</td>
+            <td class="yes">Low</td>
+          </tr>
+          <tr>
+            <td class="tool-name">dotbot</td>
+            <td class="no">--</td>
+            <td class="no">--</td>
+            <td class="yes">YAML config</td>
+            <td class="no">--</td>
+            <td>Python</td>
+            <td class="yes">Low</td>
+          </tr>
+          <tr>
+            <td class="tool-name">home-manager</td>
+            <td class="partial">Nix expressions</td>
+            <td class="partial">agenix/sops-nix</td>
+            <td class="partial">Nix-managed</td>
+            <td class="no">--</td>
+            <td>Nix</td>
+            <td class="no">Very high</td>
+          </tr>
+          <tr>
+            <td class="tool-name">rcm</td>
+            <td class="no">--</td>
+            <td class="no">--</td>
+            <td class="yes">Tag-based</td>
+            <td class="no">--</td>
+            <td>Bash</td>
+            <td class="yes">Low</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="alts" style="margin-top: 48px;">
       <div class="alt">
-        <p class="alt-name">chezmoi</p>
-        <p class="alt-body">chezmoi has secret integration. But you're also adopting chezmoi's source directory layout, its own template dialect (Go templates), and its own config format. <strong>Using chezmoi means migrating your dotfiles into chezmoi's model</strong> — not layering on top of a normal git repo. dotf has one config file (<code>.secrets.toml</code>) and uses Handlebars. Your dotfiles directory stays a plain git repo you can read without knowing dotf at all.</p>
+        <p class="alt-name">chezmoi <span class="alt-verdict verdict-ok">closest competitor</span></p>
+        <p class="alt-body">chezmoi is the most feature-complete dotfiles manager available. It has secret integration, run-once scripts, external file fetching, and OS-conditional logic. <strong>If you need all of that, use chezmoi.</strong></p>
+        <p class="alt-body" style="margin-top:10px">The trade-off is complexity. chezmoi introduces its own concepts: source state vs. target state, filename-prefix attributes (<code>dot_</code>, <code>private_</code>, <code>run_once_</code>, <code>modify_</code>), and a Go template dialect with Sprig functions. Secrets are embedded directly in templates: <code>{{ (bitwarden "item").password }}</code>. This couples your templates to a specific password manager &mdash; switching from Bitwarden to 1Password means editing every template that references a secret.</p>
+        <p class="alt-body" style="margin-top:10px">dotf separates secrets from templates. Your template says <code>{{DB_PASS}}</code>, and <code>.secrets.toml</code> maps it to <code>bw://db/password</code>. Switch password managers by changing one line, not every template. Your dotfiles directory stays a plain git repo &mdash; no source-state directory, no filename prefixes, no migration step.</p>
+        <div class="alt-tags">
+          <span class="alt-tag">Go binary</span>
+          <span class="alt-tag">16k+ GitHub stars</span>
+          <span class="alt-tag">file copies, not symlinks</span>
+          <span class="alt-tag">Go text/template syntax</span>
+        </div>
       </div>
       <div class="alt">
-        <p class="alt-name">yadm</p>
-        <p class="alt-body">yadm's secret handling is GPG encryption of whole files. You can't encrypt just the email field in a <code>.gitconfig</code> — you have to encrypt the whole file. The unencrypted version never lives in your repo, so <code>git diff</code> and <code>git log</code> are useless for those files. <strong>dotf doesn't encrypt anything.</strong> Your password manager already handles that. dotf just asks it at sync time, so the readable template stays in git and the real file stays out.</p>
+        <p class="alt-name">GNU Stow <span class="alt-verdict verdict-good">great for simple setups</span></p>
+        <p class="alt-body">Stow is pure symlink management. It's elegant, transparent, and has zero learning curve for the core concept: mirror a directory tree as symlinks. <strong>If your configs have no secret values &mdash; no tokens, no emails, no credentials &mdash; use Stow.</strong> It's simpler than dotf.</p>
+        <p class="alt-body" style="margin-top:10px">If they do have secrets, Stow has nothing to say. You're back to the <code>.localrc</code> workaround or manually managing secrets outside of git. Stow also has no templating, no diffing, no sync workflow, and no way to handle machine-specific configs. dotf is Stow with a template-render-and-inject step and git sync built in.</p>
+        <div class="alt-tags">
+          <span class="alt-tag">Perl</span>
+          <span class="alt-tag">no templates</span>
+          <span class="alt-tag">no secrets</span>
+          <span class="alt-tag">Unix only</span>
+        </div>
       </div>
       <div class="alt">
-        <p class="alt-name">GNU stow</p>
-        <p class="alt-body">stow is pure symlink management. It's elegant and it works. <strong>It has nothing to say about secrets.</strong> If your configs have no secret values baked in — no tokens, no emails, no credentials — use stow. It's simpler. If they do, you need something between the raw file and git. dotf is stow with a template-render-and-inject step and git sync built in.</p>
+        <p class="alt-name">yadm <span class="alt-verdict verdict-ok">git-native approach</span></p>
+        <p class="alt-body">yadm is a thin wrapper around a bare git repo. If you think in git, yadm feels natural. Its secret handling is GPG encryption via git-crypt &mdash; whole files, all or nothing. You can't encrypt just the email field in a <code>.gitconfig</code>; the entire file becomes an opaque blob. <code>git diff</code> and <code>git log</code> show nothing useful for encrypted files.</p>
+        <p class="alt-body" style="margin-top:10px">Machine-specific configs use "alternate files" &mdash; full copies of a file per hostname or OS. This doesn't scale: 5 machines with slightly different <code>.zshrc</code> files means 5 copies to maintain, not 1 template with a variable. <strong>dotf doesn't encrypt anything.</strong> Your password manager already handles storage and access control. dotf just asks it at sync time, so the readable template stays in git and the real file stays out.</p>
+        <div class="alt-tags">
+          <span class="alt-tag">Bash script</span>
+          <span class="alt-tag">bare git repo</span>
+          <span class="alt-tag">GPG whole-file encryption</span>
+          <span class="alt-tag">alternate files, not templates</span>
+        </div>
       </div>
       <div class="alt">
-        <p class="alt-name">git-crypt / git-secret</p>
-        <p class="alt-body">These encrypt specific files in your repo. The encrypted blob is opaque — <code>git diff</code> shows binary noise, <code>git log</code> shows nothing meaningful. Key management is its own problem: rotate your GPG key and every repo that uses it is broken until you re-encrypt. <strong>And the decrypted value still has to go somewhere on the new machine</strong> — you've moved the secret-distribution problem, not solved it. dotf routes to your password manager, which you already have on every machine.</p>
+        <p class="alt-name">dotbot <span class="alt-verdict verdict-good">simple and YAML-driven</span></p>
+        <p class="alt-body">dotbot is a YAML-driven symlink + shell command runner. Clean config format, plugin ecosystem, cross-platform. Like Stow, it has no templating, no encryption, no secrets, and no diff/preview. If you just need to declare "these files should be symlinked here" and occasionally run a shell script, dotbot does that well. <strong>If any of those files contain values that shouldn't be in git, dotbot can't help.</strong></p>
+        <div class="alt-tags">
+          <span class="alt-tag">Python runtime</span>
+          <span class="alt-tag">YAML config</span>
+          <span class="alt-tag">no templates</span>
+          <span class="alt-tag">no secrets</span>
+        </div>
+      </div>
+      <div class="alt">
+        <p class="alt-name">home-manager <span class="alt-verdict verdict-none">different paradigm</span></p>
+        <p class="alt-body">home-manager manages dotfiles, packages, services, and system configuration through Nix expressions. It's the most powerful option &mdash; fully declarative, reproducible, with atomic rollbacks. <strong>It also requires learning the Nix language</strong>, which has a notoriously steep curve and famously unhelpful error messages. If you're already invested in the Nix ecosystem, home-manager is excellent. If you just want to manage some config files with secrets, it's like using a bulldozer to plant flowers.</p>
+        <div class="alt-tags">
+          <span class="alt-tag">Nix ecosystem</span>
+          <span class="alt-tag">steep learning curve</span>
+          <span class="alt-tag">no Windows</span>
+          <span class="alt-tag">manages everything, not just dotfiles</span>
+        </div>
+      </div>
+      <div class="alt">
+        <p class="alt-name">git-crypt / git-secret <span class="alt-verdict verdict-ok">encryption approach</span></p>
+        <p class="alt-body">These encrypt specific files in your repo. The encrypted blob is opaque &mdash; <code>git diff</code> shows binary noise, <code>git log</code> shows nothing meaningful. Key management is its own problem: rotate your GPG key and every collaborator's access breaks until you re-encrypt.</p>
+        <p class="alt-body" style="margin-top:10px"><strong>The decrypted value still has to go somewhere on the new machine</strong> &mdash; you've moved the secret-distribution problem, not solved it. dotf routes to your password manager, which you already have on every machine, handles its own access control, and doesn't require GPG key ceremony.</p>
+        <div class="alt-tags">
+          <span class="alt-tag">GPG-based</span>
+          <span class="alt-tag">whole-file encryption</span>
+          <span class="alt-tag">key management overhead</span>
+          <span class="alt-tag">opaque diffs</span>
+        </div>
+      </div>
+      <div class="alt">
+        <p class="alt-name">rcm <span class="alt-verdict verdict-good">tag-based organization</span></p>
+        <p class="alt-body">rcm from Thoughtbot uses a tag-based system to group related dotfiles and supports multiple dotfile directories. Simple shell commands (<code>rcup</code>, <code>lsrc</code>, <code>mkrc</code>). No templates, no secrets, no encryption. Unix only with minimal development activity. <strong>Good if you want organized symlinks across personal and work configs, but doesn't address the secret values problem.</strong></p>
+        <div class="alt-tags">
+          <span class="alt-tag">Bash</span>
+          <span class="alt-tag">tag-based groups</span>
+          <span class="alt-tag">no templates</span>
+          <span class="alt-tag">no secrets</span>
+          <span class="alt-tag">Unix only</span>
+        </div>
       </div>
     </div>
   </div>
