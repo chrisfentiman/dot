@@ -59,3 +59,25 @@ jobs:
 
       - name: fuzz_toml_parse (30s)
         run: cargo fuzz run fuzz_toml_parse -- -max_total_time=30
+
+  mutants:
+    name: Mutation testing
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants
+
+      - name: Run mutation testing
+        run: cargo mutants --timeout=60 -- --lib
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-report
+          path: mutants.out/
