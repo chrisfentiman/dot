@@ -74,7 +74,15 @@ impl Runner for SystemRunner {
         }
         let out = c.output()?;
         Ok(RunOutput {
-            status: out.status.code().unwrap_or(1),
+            status: out.status.code().unwrap_or_else(|| {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::ExitStatusExt;
+                    out.status.signal().map_or(1, |sig| 128 + sig)
+                }
+                #[cfg(not(unix))]
+                { 1 }
+            }),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         })

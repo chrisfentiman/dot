@@ -14,3 +14,29 @@ pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         Err(p) => p.into_inner(),
     }
 }
+
+#[cfg(test)]
+pub(crate) struct EnvGuard {
+    key: String,
+    prev: Option<String>,
+}
+
+#[cfg(test)]
+impl EnvGuard {
+    /// Set an env var, returning a guard that restores the original value on drop.
+    pub(crate) fn set(key: &str, val: &str) -> Self {
+        let prev = std::env::var(key).ok();
+        unsafe { std::env::set_var(key, val); }
+        Self { key: key.to_string(), prev }
+    }
+}
+
+#[cfg(test)]
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.prev {
+            Some(v) => unsafe { std::env::set_var(&self.key, v); },
+            None => unsafe { std::env::remove_var(&self.key); },
+        }
+    }
+}

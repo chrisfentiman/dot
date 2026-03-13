@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 use std::fs;
 
-use crate::dotfiles;
+use crate::dotfiles::DotfContext;
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum ConfigStatus {
@@ -14,6 +14,7 @@ pub(crate) enum ConfigStatus {
 }
 
 pub(crate) fn check_config_status(
+    ctx: &DotfContext,
     template_path: &std::path::Path,
     output_path: &std::path::Path,
     target_str: &str,
@@ -21,7 +22,7 @@ pub(crate) fn check_config_status(
     if !template_path.exists() {
         return ConfigStatus::MissingTemplate;
     }
-    match dotfiles::expand_tilde(target_str) {
+    match ctx.resolve_symlink_target(target_str) {
         Err(_) => ConfigStatus::MissingSymlink,
         Ok(link_path) => {
             if link_path.symlink_metadata().is_err() {
@@ -56,9 +57,9 @@ pub(crate) fn check_config_status(
 /// Collect the status of each managed config. Returns a sorted vec of
 /// (config_name, target_path, status). Separated from printing so tests
 /// can assert on the data without capturing stdout.
-pub(crate) fn collect_statuses() -> Result<Vec<(String, String, ConfigStatus)>> {
-    let symlinks = dotfiles::read_symlinks()?;
-    let configs_dir = dotfiles::configs_dir()?;
+pub(crate) fn collect_statuses(ctx: &DotfContext) -> Result<Vec<(String, String, ConfigStatus)>> {
+    let symlinks = ctx.read_symlinks()?;
+    let configs_dir = ctx.configs_dir()?;
 
     let mut entries: Vec<_> = symlinks.symlinks.into_iter().collect();
     entries.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -67,14 +68,14 @@ pub(crate) fn collect_statuses() -> Result<Vec<(String, String, ConfigStatus)>> 
     for (name, target_str) in &entries {
         let template_path = configs_dir.join(format!("{name}.tmpl"));
         let output_path = configs_dir.join(name);
-        let status = check_config_status(&template_path, &output_path, target_str);
+        let status = check_config_status(ctx, &template_path, &output_path, target_str);
         results.push((name.clone(), target_str.clone(), status));
     }
     Ok(results)
 }
 
-pub fn run() -> Result<()> {
-    let statuses = collect_statuses()?;
+pub fn run(ctx: &DotfContext) -> Result<()> {
+    let statuses = collect_statuses(ctx)?;
 
     if statuses.is_empty() {
         println!(
@@ -134,6 +135,8 @@ mod tests {
     use tempfile::TempDir;
 
     struct Env {
+        // Drop order: _home_guard restores HOME, _tmp deletes dir, _lock releases mutex.
+        _home_guard: crate::EnvGuard,
         _tmp: TempDir,
         _lock: std::sync::MutexGuard<'static, ()>,
     }
@@ -144,18 +147,12 @@ mod tests {
             let tmp = TempDir::new().unwrap();
             let dotfiles = tmp.path().join("dotfiles");
             std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
-            unsafe { std::env::set_var("HOME", tmp.path()); }
-            Env { _tmp: tmp, _lock }
+            let _home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
+            Env { _tmp: tmp, _home_guard, _lock }
         }
 
         fn dotfiles(&self) -> std::path::PathBuf {
             self._tmp.path().join("dotfiles")
-        }
-    }
-
-    impl Drop for Env {
-        fn drop(&mut self) {
-            unsafe { std::env::remove_var("HOME"); }
         }
     }
 
@@ -167,6 +164,10 @@ mod tests {
         let sf = SymlinksFile { symlinks: map };
         let path = env.dotfiles().join(".symlinks.toml");
         std::fs::write(&path, toml::to_string_pretty(&sf).unwrap()).unwrap();
+    }
+
+    fn ctx() -> DotfContext {
+        DotfContext::global()
     }
 
     // ── check_config_status direct tests ───────────────────────
@@ -181,6 +182,7 @@ mod tests {
         symlink(configs.join("cfg"), &link).unwrap();
 
         let status = check_config_status(
+            &ctx(),
             &configs.join("cfg.tmpl"),
             &configs.join("cfg"),
             &link.to_string_lossy(),
@@ -201,6 +203,7 @@ mod tests {
         symlink(&elsewhere, &link).unwrap();
 
         let status = check_config_status(
+            &ctx(),
             &configs.join("cfg.tmpl"),
             &configs.join("cfg"),
             &link.to_string_lossy(),
@@ -215,6 +218,7 @@ mod tests {
         let link = env._tmp.path().join("cfg");
 
         let status = check_config_status(
+            &ctx(),
             &configs.join("cfg.tmpl"),
             &configs.join("cfg"),
             &link.to_string_lossy(),
@@ -231,6 +235,7 @@ mod tests {
         let link = env._tmp.path().join("cfg");
 
         let status = check_config_status(
+            &ctx(),
             &configs.join("cfg.tmpl"),
             &configs.join("cfg"),
             &link.to_string_lossy(),
@@ -244,12 +249,11 @@ mod tests {
         let configs = env.dotfiles().join("configs");
         std::fs::write(configs.join("cfg.tmpl"), "x").unwrap();
 
-        // link exists but target is a regular file (not a symlink) —
-        // read_link returns Err → BrokenSymlink
         let link = env._tmp.path().join("cfg");
         std::fs::write(&link, "regular").unwrap();
 
         let status = check_config_status(
+            &ctx(),
             &configs.join("cfg.tmpl"),
             &configs.join("cfg"),
             &link.to_string_lossy(),
@@ -263,11 +267,11 @@ mod tests {
         let configs = env.dotfiles().join("configs");
         std::fs::write(configs.join("cfg.tmpl"), "x").unwrap();
 
-        // Create a symlink pointing to a nonexistent target (dangling symlink).
         let link = env._tmp.path().join("cfg");
         symlink("/nonexistent/path/that/does/not/exist", &link).unwrap();
 
         let status = check_config_status(
+            &ctx(),
             &configs.join("cfg.tmpl"),
             &configs.join("cfg"),
             &link.to_string_lossy(),
@@ -280,10 +284,9 @@ mod tests {
     #[test]
     fn status_empty_symlinks_returns_empty() {
         let _env = Env::new();
-        let statuses = collect_statuses().unwrap();
+        let statuses = collect_statuses(&ctx()).unwrap();
         assert!(statuses.is_empty());
-        // run() also succeeds (prints hint)
-        run().unwrap();
+        run(&ctx()).unwrap();
     }
 
     #[test]
@@ -292,7 +295,7 @@ mod tests {
         let link = env._tmp.path().join("link.conf");
         write_symlinks_map(&env, &[("cfg", &link.to_string_lossy())]);
 
-        let statuses = collect_statuses().unwrap();
+        let statuses = collect_statuses(&ctx()).unwrap();
         assert_eq!(statuses.len(), 1);
         assert_eq!(statuses[0].0, "cfg");
         assert_eq!(statuses[0].2, ConfigStatus::MissingTemplate);
@@ -311,7 +314,7 @@ mod tests {
 
         write_symlinks_map(&env, &[("cfg", &link.to_string_lossy())]);
 
-        let statuses = collect_statuses().unwrap();
+        let statuses = collect_statuses(&ctx()).unwrap();
         assert_eq!(statuses.len(), 1);
         assert_eq!(statuses[0].2, ConfigStatus::Ok);
     }
@@ -331,7 +334,7 @@ mod tests {
 
         write_symlinks_map(&env, &[("cfg", &link.to_string_lossy())]);
 
-        let statuses = collect_statuses().unwrap();
+        let statuses = collect_statuses(&ctx()).unwrap();
         assert_eq!(statuses.len(), 1);
         assert!(matches!(statuses[0].2, ConfigStatus::WrongTarget(_)));
     }
@@ -347,16 +350,15 @@ mod tests {
         symlink(configs.join("cfg"), &link).unwrap();
 
         write_symlinks_map(&env, &[("cfg", &link.to_string_lossy())]);
-        run().unwrap();
+        run(&ctx()).unwrap();
     }
 
     #[test]
     fn run_propagates_corrupted_symlinks_error() {
         let env = Env::new();
-        // Write invalid TOML so read_symlinks (called inside run) fails
         let path = env.dotfiles().join(".symlinks.toml");
         std::fs::write(&path, "not valid toml {{{{").unwrap();
-        let err = run().unwrap_err();
+        let err = run(&ctx()).unwrap_err();
         assert!(
             err.to_string().contains("parse") || err.to_string().contains("TOML"),
             "run() should propagate parse error: {err}"

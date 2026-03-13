@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
 
+use crate::dotfiles::DotfContext;
 use crate::{dotfiles, secret};
 
 #[derive(Subcommand)]
@@ -24,17 +25,17 @@ pub enum SecretsAction {
     },
 }
 
-pub fn run(action: SecretsAction) -> Result<()> {
+pub fn run(ctx: &DotfContext, action: SecretsAction) -> Result<()> {
     match action {
-        SecretsAction::List => list(),
-        SecretsAction::Validate => validate(),
-        SecretsAction::Add { name, uri } => add(name, uri),
-        SecretsAction::Remove { name } => remove(name),
+        SecretsAction::List => list(ctx),
+        SecretsAction::Validate => validate(ctx),
+        SecretsAction::Add { name, uri } => add(ctx, name, uri),
+        SecretsAction::Remove { name } => remove(ctx, name),
     }
 }
 
-fn list() -> Result<()> {
-    let secrets = dotfiles::read_secrets()?;
+fn list(ctx: &DotfContext) -> Result<()> {
+    let secrets = ctx.read_secrets()?;
 
     if secrets.secrets.is_empty() {
         println!(
@@ -88,8 +89,8 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-fn validate() -> Result<()> {
-    let secrets = dotfiles::read_secrets()?;
+fn validate(ctx: &DotfContext) -> Result<()> {
+    let secrets = ctx.read_secrets()?;
 
     if secrets.secrets.is_empty() {
         println!("No secrets to validate.");
@@ -140,7 +141,7 @@ fn validate() -> Result<()> {
     Ok(())
 }
 
-fn add(name: String, uri: String) -> Result<()> {
+fn add(ctx: &DotfContext, name: String, uri: String) -> Result<()> {
     if !dotfiles::is_valid_placeholder_name(&name) {
         anyhow::bail!(
             "Invalid placeholder name '{}': must be non-empty and contain only ASCII alphanumeric characters and underscores",
@@ -153,10 +154,10 @@ fn add(name: String, uri: String) -> Result<()> {
             uri
         );
     }
-    let mut secrets = dotfiles::read_secrets()?;
+    let mut secrets = ctx.read_secrets()?;
     let existed = secrets.secrets.contains_key(&name);
     secrets.secrets.insert(name.clone(), uri.clone());
-    dotfiles::write_secrets(&secrets).context("Failed to write .secrets.toml")?;
+    ctx.write_secrets(&secrets).context("Failed to write .secrets.toml")?;
 
     if existed {
         println!("{} Updated {} -> {}", "✓".green(), name.cyan(), uri);
@@ -166,12 +167,12 @@ fn add(name: String, uri: String) -> Result<()> {
     Ok(())
 }
 
-fn remove(name: String) -> Result<()> {
-    let mut secrets = dotfiles::read_secrets()?;
+fn remove(ctx: &DotfContext, name: String) -> Result<()> {
+    let mut secrets = ctx.read_secrets()?;
     if secrets.secrets.remove(&name).is_none() {
         anyhow::bail!("Secret '{}' not found in .secrets.toml", name);
     }
-    dotfiles::write_secrets(&secrets).context("Failed to write .secrets.toml")?;
+    ctx.write_secrets(&secrets).context("Failed to write .secrets.toml")?;
     println!("{} Removed {}", "✓".green(), name.cyan());
     Ok(())
 }
@@ -182,6 +183,8 @@ mod tests {
     use tempfile::TempDir;
 
     struct Env {
+        // Drop order: _home_guard restores HOME, _tmp deletes dir, _lock releases mutex.
+        _home_guard: crate::EnvGuard,
         _tmp: TempDir,
         _lock: std::sync::MutexGuard<'static, ()>,
     }
@@ -192,32 +195,30 @@ mod tests {
             let tmp = TempDir::new().unwrap();
             let dotfiles = tmp.path().join("dotfiles");
             std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
-            unsafe { std::env::set_var("HOME", tmp.path()); }
-            Env { _tmp: tmp, _lock }
+            let _home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
+            Env { _tmp: tmp, _home_guard, _lock }
         }
     }
 
-    impl Drop for Env {
-        fn drop(&mut self) {
-            unsafe { std::env::remove_var("HOME"); }
-        }
+    fn ctx() -> DotfContext {
+        DotfContext::global()
     }
 
     // ── add ──────────────────────────────────────────────────────
     #[test]
     fn add_inserts_new_secret() {
         let _e = Env::new();
-        add("FOO".into(), "env://FOO".into()).unwrap();
-        let s = dotfiles::read_secrets().unwrap();
+        add(&ctx(), "FOO".into(), "env://FOO".into()).unwrap();
+        let s = ctx().read_secrets().unwrap();
         assert_eq!(s.secrets["FOO"], "env://FOO");
     }
 
     #[test]
     fn add_overwrites_existing_secret() {
         let _e = Env::new();
-        add("FOO".into(), "env://OLD".into()).unwrap();
-        add("FOO".into(), "env://NEW".into()).unwrap();
-        let s = dotfiles::read_secrets().unwrap();
+        add(&ctx(), "FOO".into(), "env://OLD".into()).unwrap();
+        add(&ctx(), "FOO".into(), "env://NEW".into()).unwrap();
+        let s = ctx().read_secrets().unwrap();
         assert_eq!(s.secrets["FOO"], "env://NEW");
     }
 
@@ -225,16 +226,16 @@ mod tests {
     #[test]
     fn remove_deletes_existing_secret() {
         let _e = Env::new();
-        add("BAR".into(), "env://BAR".into()).unwrap();
-        remove("BAR".into()).unwrap();
-        let s = dotfiles::read_secrets().unwrap();
+        add(&ctx(), "BAR".into(), "env://BAR".into()).unwrap();
+        remove(&ctx(), "BAR".into()).unwrap();
+        let s = ctx().read_secrets().unwrap();
         assert!(!s.secrets.contains_key("BAR"));
     }
 
     #[test]
     fn remove_errors_on_missing_secret() {
         let _e = Env::new();
-        let err = remove("NOPE".into()).unwrap_err();
+        let err = remove(&ctx(), "NOPE".into()).unwrap_err();
         assert!(err.to_string().contains("NOPE"));
     }
 
@@ -242,39 +243,38 @@ mod tests {
     #[test]
     fn validate_passes_when_env_secrets_present() {
         let _e = Env::new();
-        unsafe { std::env::set_var("_DOTF_TEST_VAL", "value"); }
-        add("VAL".into(), "env://_DOTF_TEST_VAL".into()).unwrap();
-        validate().unwrap();
-        unsafe { std::env::remove_var("_DOTF_TEST_VAL"); }
+        let _val = crate::EnvGuard::set("_DOTF_TEST_VAL", "value");
+        add(&ctx(), "VAL".into(), "env://_DOTF_TEST_VAL".into()).unwrap();
+        validate(&ctx()).unwrap();
     }
 
     #[test]
     fn validate_fails_when_secret_missing() {
         let _e = Env::new();
         unsafe { std::env::remove_var("_DOTF_TEST_ABSENT"); }
-        add("ABSENT".into(), "env://_DOTF_TEST_ABSENT".into()).unwrap();
-        let err = validate().unwrap_err();
+        add(&ctx(), "ABSENT".into(), "env://_DOTF_TEST_ABSENT".into()).unwrap();
+        let err = validate(&ctx()).unwrap_err();
         assert!(err.to_string().contains("failed validation"));
     }
 
     #[test]
     fn validate_empty_secrets_returns_ok() {
         let _e = Env::new();
-        validate().unwrap();
+        validate(&ctx()).unwrap();
     }
 
     // ── add validation ──────────────────────────────────────────
     #[test]
     fn add_rejects_invalid_placeholder_name() {
         let _e = Env::new();
-        let err = add("invalid-name".into(), "env://FOO".into()).unwrap_err();
+        let err = add(&ctx(), "invalid-name".into(), "env://FOO".into()).unwrap_err();
         assert!(err.to_string().contains("Invalid placeholder name"));
     }
 
     #[test]
     fn add_rejects_invalid_uri_scheme() {
         let _e = Env::new();
-        let err = add("FOO".into(), "https://example.com".into()).unwrap_err();
+        let err = add(&ctx(), "FOO".into(), "https://example.com".into()).unwrap_err();
         assert!(err.to_string().contains("Invalid secret URI"));
     }
 }

@@ -23,7 +23,7 @@ test = false
 doc = false
 bench = false
 
-# fuzz_template_render: fuzz handlebars template rendering with arbitrary content
+# fuzz_template_render: fuzz template rendering with arbitrary content
 [[bin]]
 name = "fuzz_template_render"
 path = "fuzz_targets/fuzz_template_render.rs"

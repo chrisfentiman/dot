@@ -142,7 +142,11 @@ fn run_secret_cli(
 
     let mut value = Zeroizing::new(
         String::from_utf8(output.stdout)
-            .map_err(|_| anyhow!("{friendly_name} output for {original_uri} is not valid UTF-8"))?,
+            .map_err(|e| {
+                let mut bytes = e.into_bytes();
+                zeroize::Zeroize::zeroize(&mut bytes);
+                anyhow!("{friendly_name} output for {original_uri} is not valid UTF-8")
+            })?,
     );
     let trimmed_len = value.trim_end_matches(['\n', '\r']).len();
     value.truncate(trimmed_len);
@@ -348,14 +352,9 @@ mod tests {
     #[test]
     fn fetch_env_present() {
         let _g = crate::env_lock();
-        unsafe {
-            std::env::set_var("_DOTF_TEST_SECRET", "hunter2");
-        }
+        let _secret = crate::EnvGuard::set("_DOTF_TEST_SECRET", "hunter2");
         let val = fetch("env://_DOTF_TEST_SECRET").unwrap();
         assert_eq!(val.as_str(), "hunter2");
-        unsafe {
-            std::env::remove_var("_DOTF_TEST_SECRET");
-        }
     }
 
     #[test]
@@ -471,12 +470,12 @@ mod tests {
     #[test]
     fn forwarded_env_includes_home_and_path() {
         let _g = crate::env_lock();
-        // Ensure HOME and PATH are set for this test.
-        unsafe {
-            if std::env::var("HOME").is_err() {
-                std::env::set_var("HOME", "/tmp");
-            }
-        }
+        // Ensure HOME is set for this test (guard restores original on drop).
+        let _home = if std::env::var("HOME").is_err() {
+            Some(crate::EnvGuard::set("HOME", "/tmp"))
+        } else {
+            None
+        };
         let env = forwarded_env(&[]);
         let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
         assert!(keys.contains(&"HOME"), "should include HOME");
@@ -486,11 +485,10 @@ mod tests {
     #[test]
     fn forwarded_env_includes_extras() {
         let _g = crate::env_lock();
-        unsafe { std::env::set_var("_DOTF_FWD_TEST", "val"); }
+        let _fwd = crate::EnvGuard::set("_DOTF_FWD_TEST", "val");
         let env = forwarded_env(&["_DOTF_FWD_TEST"]);
         let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
         assert!(keys.contains(&"_DOTF_FWD_TEST"));
-        unsafe { std::env::remove_var("_DOTF_FWD_TEST"); }
     }
 
     #[test]
@@ -586,10 +584,9 @@ mod tests {
     #[test]
     fn fetch_op_with_forwards_session_vars() {
         let _g = crate::env_lock();
-        unsafe {
-            std::env::set_var("OP_SESSION_myacct", "tok123");
-            std::env::set_var("OP_SERVICE_ACCOUNT_TOKEN", "sa-tok");
-        }
+        let _session = crate::EnvGuard::set("OP_SESSION_myacct", "tok123");
+        let _sa_tok = crate::EnvGuard::set("OP_SERVICE_ACCOUNT_TOKEN", "sa-tok");
+
         let runner = MockSecretRunner::new()
             .on_success("op", &["read", "op://v/i/f"], b"val");
         fetch_op_with("v/i/f", "op://v/i/f", &runner).unwrap();
@@ -599,11 +596,6 @@ mod tests {
         let env_keys: Vec<&str> = envs[0].iter().map(|(k, _)| k.as_str()).collect();
         assert!(env_keys.contains(&"OP_SESSION_myacct"), "should forward OP_SESSION_*");
         assert!(env_keys.contains(&"OP_SERVICE_ACCOUNT_TOKEN"), "should forward OP_SERVICE_ACCOUNT_TOKEN");
-
-        unsafe {
-            std::env::remove_var("OP_SESSION_myacct");
-            std::env::remove_var("OP_SERVICE_ACCOUNT_TOKEN");
-        }
     }
 
     #[test]
@@ -611,7 +603,7 @@ mod tests {
         let _g = crate::env_lock();
         // 41 chars — exceeds the <= 40 length limit
         let long_key = format!("OP_SESSION_{}", "x".repeat(30));
-        unsafe { std::env::set_var(&long_key, "val"); }
+        let _long = crate::EnvGuard::set(&long_key, "val");
 
         let runner = MockSecretRunner::new()
             .on_success("op", &["read", "op://v/i/f"], b"val");
@@ -620,8 +612,6 @@ mod tests {
         let envs = runner.captured_envs.borrow();
         let env_keys: Vec<&str> = envs[0].iter().map(|(k, _)| k.as_str()).collect();
         assert!(!env_keys.contains(&long_key.as_str()), "should not forward overly long OP_SESSION_ var");
-
-        unsafe { std::env::remove_var(&long_key); }
     }
 
     // ── fetch_bw_with ───────────────────────────────────────────

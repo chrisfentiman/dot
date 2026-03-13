@@ -5,21 +5,50 @@ use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use tempfile::TempDir;
 
+use dotf::dotfiles::DotfContext;
+
+// ── EnvGuard (local copy — integration tests are a separate crate) ──────────
+
+struct EnvGuard {
+    key: String,
+    prev: Option<String>,
+}
+
+impl EnvGuard {
+    /// Set an env var, returning a guard that restores the original value on drop.
+    fn set(key: &str, val: &str) -> Self {
+        let prev = std::env::var(key).ok();
+        unsafe { std::env::set_var(key, val); }
+        Self { key: key.to_string(), prev }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.prev {
+            Some(v) => unsafe { std::env::set_var(&self.key, v); },
+            None => unsafe { std::env::remove_var(&self.key); },
+        }
+    }
+}
+
 // ── serialisation helpers ─────────────────────────────────────────────────────
-// All integration tests mutate the HOME env var, so they must not run
-// concurrently.  Holding ENV_LOCK for the lifetime of each TestEnv ensures
+// All global-mode integration tests mutate the HOME env var, so they must not
+// run concurrently.  Holding ENV_LOCK for the lifetime of each TestEnv ensures
 // serialisation without requiring an external crate.
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── global-mode helpers ─────────────────────────────────────────────────────
 
 struct TestEnv {
-    _lock: MutexGuard<'static, ()>,
-    _home: TempDir,
     home_path: PathBuf,
-    dotfiles: PathBuf,
     configs: PathBuf,
+    ctx: DotfContext,
+    // Drop order: _home_guard restores HOME, then _home deletes tmpdir, then _lock releases mutex.
+    _home_guard: EnvGuard,
+    _home: TempDir,
+    _lock: MutexGuard<'static, ()>,
 }
 
 impl TestEnv {
@@ -33,17 +62,19 @@ impl TestEnv {
         let configs = dotfiles.join("configs");
         fs::create_dir_all(&configs).unwrap();
 
-        // Redirect HOME so dirs::home_dir() / dotfiles_dir() point here
-        unsafe {
-            std::env::set_var("HOME", &home_path);
-        }
+        // Redirect HOME so dirs::home_dir() / dotfiles_dir() point here.
+        // EnvGuard saves the original HOME and restores it on drop.
+        let home_guard = EnvGuard::set("HOME", &home_path.to_string_lossy());
+
+        let ctx = DotfContext::global();
 
         TestEnv {
             _lock: lock,
+            _home_guard: home_guard,
             _home: home,
             home_path,
-            dotfiles,
             configs,
+            ctx,
         }
     }
 
@@ -52,19 +83,21 @@ impl TestEnv {
     }
 
     fn write_secrets_toml(&self, pairs: &[(&str, &str)]) {
+        let dotfiles = self.home_path.join("dotfiles");
         let mut toml = String::from("[secrets]\n");
         for (k, v) in pairs {
             toml.push_str(&format!("\"{k}\" = \"{v}\"\n"));
         }
-        fs::write(self.dotfiles.join(".secrets.toml"), toml).unwrap();
+        fs::write(dotfiles.join(".secrets.toml"), toml).unwrap();
     }
 
     fn write_symlinks_toml(&self, pairs: &[(&str, &str)]) {
+        let dotfiles = self.home_path.join("dotfiles");
         let mut toml = String::from("[symlinks]\n");
         for (k, v) in pairs {
             toml.push_str(&format!("\"{k}\" = \"{v}\"\n"));
         }
-        fs::write(self.dotfiles.join(".symlinks.toml"), toml).unwrap();
+        fs::write(dotfiles.join(".symlinks.toml"), toml).unwrap();
     }
 
     fn rendered(&self, name: &str) -> String {
@@ -78,12 +111,8 @@ impl TestEnv {
 fn render_and_symlink_all_basic() {
     let env = TestEnv::new();
 
-    unsafe {
-        std::env::set_var("_IT_EMAIL", "chris@example.com");
-    }
-    unsafe {
-        std::env::set_var("_IT_TOKEN", "tok123");
-    }
+    let _email = EnvGuard::set("_IT_EMAIL", "chris@example.com");
+    let _token = EnvGuard::set("_IT_TOKEN", "tok123");
 
     env.write_template(
         ".gitconfig",
@@ -95,7 +124,7 @@ fn render_and_symlink_all_basic() {
     env.write_symlinks_toml(&[(".gitconfig", &link_target)]);
 
     // Run the full pipeline
-    let done = dotf::dotfiles::render_and_symlink_all().unwrap();
+    let done = env.ctx.render_and_symlink_all().unwrap();
 
     assert_eq!(done.len(), 1);
     assert_eq!(
@@ -106,13 +135,6 @@ fn render_and_symlink_all_basic() {
     // Symlink should exist and point to rendered file
     let link = PathBuf::from(&link_target);
     assert!(link.symlink_metadata().is_ok());
-
-    unsafe {
-        std::env::remove_var("_IT_EMAIL");
-    }
-    unsafe {
-        std::env::remove_var("_IT_TOKEN");
-    }
 }
 
 #[test]
@@ -125,7 +147,7 @@ fn render_and_symlink_all_missing_template_is_skipped() {
     env.write_secrets_toml(&[]);
 
     // Should not error — just skip
-    let done = dotf::dotfiles::render_and_symlink_all().unwrap();
+    let done = env.ctx.render_and_symlink_all().unwrap();
     assert!(done.is_empty());
 }
 
@@ -138,7 +160,7 @@ fn render_and_symlink_all_empty_secrets_toml() {
     let link_target = format!("{}/.zshrc", env.home_path.display());
     env.write_symlinks_toml(&[(".zshrc", &link_target)]);
 
-    let done = dotf::dotfiles::render_and_symlink_all().unwrap();
+    let done = env.ctx.render_and_symlink_all().unwrap();
     assert_eq!(done.len(), 1);
     assert_eq!(
         env.rendered(".zshrc"),
@@ -150,12 +172,8 @@ fn render_and_symlink_all_empty_secrets_toml() {
 fn render_and_symlink_all_multiple_configs() {
     let env = TestEnv::new();
 
-    unsafe {
-        std::env::set_var("_IT_MULTI_A", "valueA");
-    }
-    unsafe {
-        std::env::set_var("_IT_MULTI_B", "valueB");
-    }
+    let _a = EnvGuard::set("_IT_MULTI_A", "valueA");
+    let _b = EnvGuard::set("_IT_MULTI_B", "valueB");
 
     env.write_template("a.conf", "a = {{AA}}");
     env.write_template("b.conf", "b = {{BB}}");
@@ -165,44 +183,30 @@ fn render_and_symlink_all_multiple_configs() {
     let link_b = format!("{}/b.conf", env.home_path.display());
     env.write_symlinks_toml(&[("a.conf", &link_a), ("b.conf", &link_b)]);
 
-    let done = dotf::dotfiles::render_and_symlink_all().unwrap();
+    let done = env.ctx.render_and_symlink_all().unwrap();
     assert_eq!(done.len(), 2);
 
     assert_eq!(env.rendered("a.conf"), "a = valueA");
     assert_eq!(env.rendered("b.conf"), "b = valueB");
-
-    unsafe {
-        std::env::remove_var("_IT_MULTI_A");
-    }
-    unsafe {
-        std::env::remove_var("_IT_MULTI_B");
-    }
 }
 
 #[test]
 fn render_and_symlink_all_re_render_updates_file() {
     let env = TestEnv::new();
 
-    unsafe {
-        std::env::set_var("_IT_UPDATE_VAL", "first");
-    }
+    let _val = EnvGuard::set("_IT_UPDATE_VAL", "first");
     env.write_template("cfg", "val = {{VAL}}");
     env.write_secrets_toml(&[("VAL", "env://_IT_UPDATE_VAL")]);
     let link = format!("{}/cfg", env.home_path.display());
     env.write_symlinks_toml(&[("cfg", &link)]);
 
-    dotf::dotfiles::render_and_symlink_all().unwrap();
+    env.ctx.render_and_symlink_all().unwrap();
     assert_eq!(env.rendered("cfg"), "val = first");
 
-    unsafe {
-        std::env::set_var("_IT_UPDATE_VAL", "second");
-    }
-    dotf::dotfiles::render_and_symlink_all().unwrap();
+    // Update the env var value and re-render — guard still alive, just overwrite
+    unsafe { std::env::set_var("_IT_UPDATE_VAL", "second"); }
+    env.ctx.render_and_symlink_all().unwrap();
     assert_eq!(env.rendered("cfg"), "val = second");
-
-    unsafe {
-        std::env::remove_var("_IT_UPDATE_VAL");
-    }
 }
 
 // ── secrets / symlinks toml round-trip ───────────────────────────────────────
@@ -210,7 +214,6 @@ fn render_and_symlink_all_re_render_updates_file() {
 #[test]
 fn read_write_secrets_roundtrip() {
     let env = TestEnv::new();
-    let _ = &env; // ensure HOME is set and lock is held
 
     let mut sf = dotf::dotfiles::SecretsFile::default();
     sf.secrets
@@ -218,8 +221,8 @@ fn read_write_secrets_roundtrip() {
     sf.secrets
         .insert("BAR".to_string(), "op://vault/item/field".to_string());
 
-    dotf::dotfiles::write_secrets(&sf).unwrap();
-    let loaded = dotf::dotfiles::read_secrets().unwrap();
+    env.ctx.write_secrets(&sf).unwrap();
+    let loaded = env.ctx.read_secrets().unwrap();
 
     assert_eq!(loaded.secrets["FOO"], "env://FOO");
     assert_eq!(loaded.secrets["BAR"], "op://vault/item/field");
@@ -228,14 +231,13 @@ fn read_write_secrets_roundtrip() {
 #[test]
 fn read_write_symlinks_roundtrip() {
     let env = TestEnv::new();
-    let _ = &env;
 
     let mut sl = dotf::dotfiles::SymlinksFile::default();
     sl.symlinks
         .insert(".gitconfig".to_string(), "~/.gitconfig".to_string());
 
-    dotf::dotfiles::write_symlinks(&sl).unwrap();
-    let loaded = dotf::dotfiles::read_symlinks().unwrap();
+    env.ctx.write_symlinks(&sl).unwrap();
+    let loaded = env.ctx.read_symlinks().unwrap();
 
     assert_eq!(loaded.symlinks[".gitconfig"], "~/.gitconfig");
 }
@@ -249,9 +251,9 @@ fn render_and_symlink_all_rejects_outside_home() {
     // Target escapes HOME via ../..
     env.write_symlinks_toml(&[("evil.conf", "/tmp/dotf-escape-test")]);
 
-    let err = dotf::dotfiles::render_and_symlink_all().unwrap_err();
+    let err = env.ctx.render_and_symlink_all().unwrap_err();
     assert!(
-        err.to_string().contains("outside home directory"),
+        err.to_string().contains("outside"),
         "expected path traversal rejection, got: {err}"
     );
 }
@@ -259,16 +261,188 @@ fn render_and_symlink_all_rejects_outside_home() {
 #[test]
 fn read_secrets_returns_default_when_missing() {
     let env = TestEnv::new();
-    let _ = &env;
     // No .secrets.toml written
-    let sf = dotf::dotfiles::read_secrets().unwrap();
+    let sf = env.ctx.read_secrets().unwrap();
     assert!(sf.secrets.is_empty());
 }
 
 #[test]
 fn read_symlinks_returns_default_when_missing() {
     let env = TestEnv::new();
-    let _ = &env;
-    let sl = dotf::dotfiles::read_symlinks().unwrap();
+    let sl = env.ctx.read_symlinks().unwrap();
     assert!(sl.symlinks.is_empty());
+}
+
+// ── local mode tests ─────────────────────────────────────────────────────────
+
+struct TestLocalEnv {
+    _lock: MutexGuard<'static, ()>,
+    _tmp: TempDir,
+    root: PathBuf,
+    configs: PathBuf,
+    ctx: DotfContext,
+}
+
+impl TestLocalEnv {
+    fn new() -> Self {
+        let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let dotf_dir = root.join(".dotf");
+        let configs = dotf_dir.join("configs");
+        fs::create_dir_all(&configs).unwrap();
+
+        let ctx = DotfContext::local(root.clone());
+
+        TestLocalEnv {
+            _lock: lock,
+            _tmp: tmp,
+            root,
+            configs,
+            ctx,
+        }
+    }
+
+    fn write_template(&self, name: &str, content: &str) {
+        fs::write(self.configs.join(format!("{name}.tmpl")), content).unwrap();
+    }
+
+    fn write_secrets_toml(&self, pairs: &[(&str, &str)]) {
+        let mut toml = String::from("[secrets]\n");
+        for (k, v) in pairs {
+            toml.push_str(&format!("\"{k}\" = \"{v}\"\n"));
+        }
+        fs::write(self.root.join(".dotf/.secrets.toml"), toml).unwrap();
+    }
+
+    fn write_symlinks_toml(&self, pairs: &[(&str, &str)]) {
+        let mut toml = String::from("[symlinks]\n");
+        for (k, v) in pairs {
+            toml.push_str(&format!("\"{k}\" = \"{v}\"\n"));
+        }
+        fs::write(self.root.join(".dotf/.symlinks.toml"), toml).unwrap();
+    }
+
+    fn rendered(&self, name: &str) -> String {
+        fs::read_to_string(self.configs.join(name)).unwrap()
+    }
+}
+
+#[test]
+fn local_render_and_symlink_basic() {
+    let env = TestLocalEnv::new();
+
+    let _val = EnvGuard::set("_IT_LOCAL_VAL", "secret123");
+
+    env.write_template(".env", "API_KEY={{API_KEY}}\n");
+    env.write_secrets_toml(&[("API_KEY", "env://_IT_LOCAL_VAL")]);
+    env.write_symlinks_toml(&[(".env", ".env")]);
+
+    let done = env.ctx.render_and_symlink_all().unwrap();
+    assert_eq!(done.len(), 1);
+    assert_eq!(env.rendered(".env"), "API_KEY=secret123\n");
+
+    // Symlink at project root
+    let link = env.root.join(".env");
+    assert!(link.symlink_metadata().is_ok());
+    assert_eq!(fs::read_to_string(&link).unwrap(), "API_KEY=secret123\n");
+}
+
+#[test]
+fn local_render_and_symlink_no_secrets() {
+    let env = TestLocalEnv::new();
+
+    env.write_template(".env", "DB_HOST=localhost\n");
+    env.write_secrets_toml(&[]);
+    env.write_symlinks_toml(&[(".env", ".env")]);
+
+    let done = env.ctx.render_and_symlink_all().unwrap();
+    assert_eq!(done.len(), 1);
+    assert_eq!(env.rendered(".env"), "DB_HOST=localhost\n");
+}
+
+#[test]
+fn local_rejects_path_escape() {
+    let env = TestLocalEnv::new();
+
+    env.write_template("evil", "x");
+    env.write_secrets_toml(&[]);
+    env.write_symlinks_toml(&[("evil", "../escape")]);
+
+    let err = env.ctx.render_and_symlink_all().unwrap_err();
+    assert!(
+        err.to_string().contains("outside"),
+        "should reject path traversal: {err}"
+    );
+}
+
+#[test]
+fn local_rejects_absolute_symlink_target() {
+    let env = TestLocalEnv::new();
+
+    env.write_template("cfg", "x");
+    env.write_secrets_toml(&[]);
+    env.write_symlinks_toml(&[("cfg", "/tmp/escape")]);
+
+    let err = env.ctx.render_and_symlink_all().unwrap_err();
+    assert!(
+        err.to_string().contains("relative paths"),
+        "should reject absolute target: {err}"
+    );
+}
+
+#[test]
+fn local_read_write_roundtrip() {
+    let env = TestLocalEnv::new();
+
+    let mut sf = dotf::dotfiles::SecretsFile::default();
+    sf.secrets.insert("KEY".to_string(), "env://KEY".to_string());
+    env.ctx.write_secrets(&sf).unwrap();
+    let loaded = env.ctx.read_secrets().unwrap();
+    assert_eq!(loaded.secrets["KEY"], "env://KEY");
+
+    let mut sl = dotf::dotfiles::SymlinksFile::default();
+    sl.symlinks.insert(".env".to_string(), ".env".to_string());
+    env.ctx.write_symlinks(&sl).unwrap();
+    let loaded = env.ctx.read_symlinks().unwrap();
+    assert_eq!(loaded.symlinks[".env"], ".env");
+}
+
+#[test]
+fn local_multiple_configs() {
+    let env = TestLocalEnv::new();
+
+    let _a = EnvGuard::set("_IT_LOCAL_A", "aaa");
+    let _b = EnvGuard::set("_IT_LOCAL_B", "bbb");
+
+    env.write_template(".env", "A={{A}}\n");
+    env.write_template("settings.json", "{\"key\": \"{{B}}\"}\n");
+    env.write_secrets_toml(&[("A", "env://_IT_LOCAL_A"), ("B", "env://_IT_LOCAL_B")]);
+    env.write_symlinks_toml(&[(".env", ".env"), ("settings.json", "settings.json")]);
+
+    let done = env.ctx.render_and_symlink_all().unwrap();
+    assert_eq!(done.len(), 2);
+
+    assert_eq!(env.rendered(".env"), "A=aaa\n");
+    assert_eq!(env.rendered("settings.json"), "{\"key\": \"bbb\"}\n");
+}
+
+#[test]
+fn local_subdirectory_symlink() {
+    let env = TestLocalEnv::new();
+
+    // Create subdirectory for target
+    fs::create_dir_all(env.root.join("sub")).unwrap();
+
+    env.write_template("cfg", "content\n");
+    env.write_secrets_toml(&[]);
+    env.write_symlinks_toml(&[("cfg", "sub/cfg")]);
+
+    let done = env.ctx.render_and_symlink_all().unwrap();
+    assert_eq!(done.len(), 1);
+
+    let link = env.root.join("sub/cfg");
+    assert!(link.symlink_metadata().is_ok());
+    assert_eq!(fs::read_to_string(&link).unwrap(), "content\n");
 }

@@ -3,10 +3,10 @@ use colored::Colorize;
 use dialoguer::{Confirm, Select, theme::ColorfulTheme};
 use std::fs;
 
-use crate::dotfiles;
+use crate::dotfiles::DotfContext;
 
-pub fn run(name: Option<String>) -> Result<()> {
-    let mut symlinks = dotfiles::read_symlinks()?;
+pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
+    let mut symlinks = ctx.read_symlinks()?;
 
     let config_name = match name {
         Some(n) => {
@@ -31,11 +31,15 @@ pub fn run(name: Option<String>) -> Result<()> {
         }
     };
 
-    let target_str = symlinks.symlinks[&config_name].clone();
-    let configs_dir = dotfiles::configs_dir()?;
+    let target_str = symlinks
+        .symlinks
+        .get(&config_name)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Config '{}' not found in .symlinks.toml", config_name))?;
+    let configs_dir = ctx.configs_dir()?;
     let template_path = configs_dir.join(format!("{config_name}.tmpl"));
     let rendered_path = configs_dir.join(&config_name);
-    let link_path = dotfiles::expand_tilde(&target_str)?;
+    let link_path = ctx.resolve_symlink_target(&target_str)?;
 
     println!();
     println!("This will:");
@@ -126,7 +130,7 @@ pub fn run(name: Option<String>) -> Result<()> {
 
     // Remove from .symlinks.toml
     symlinks.symlinks.remove(&config_name);
-    dotfiles::write_symlinks(&symlinks).context("Failed to update .symlinks.toml")?;
+    ctx.write_symlinks(&symlinks).context("Failed to update .symlinks.toml")?;
     println!("{} Removed from .symlinks.toml", "✓".green());
 
     println!();
@@ -140,11 +144,13 @@ pub fn run(name: Option<String>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::dotfiles::SymlinksFile;
+    use crate::dotfiles::{DotfContext, SymlinksFile};
     use std::collections::HashMap;
     use tempfile::TempDir;
 
     struct Env {
+        // Drop order: _home_guard restores HOME, _tmp deletes dir, _lock releases mutex.
+        _home_guard: crate::EnvGuard,
         _tmp: TempDir,
         _lock: std::sync::MutexGuard<'static, ()>,
     }
@@ -155,8 +161,8 @@ mod tests {
             let tmp = TempDir::new().unwrap();
             let dotfiles = tmp.path().join("dotfiles");
             std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
-            unsafe { std::env::set_var("HOME", tmp.path()); }
-            Env { _tmp: tmp, _lock }
+            let _home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
+            Env { _tmp: tmp, _home_guard, _lock }
         }
 
         fn dotfiles(&self) -> std::path::PathBuf {
@@ -164,22 +170,19 @@ mod tests {
         }
     }
 
-    impl Drop for Env {
-        fn drop(&mut self) {
-            unsafe { std::env::remove_var("HOME"); }
-        }
+    fn ctx() -> DotfContext {
+        DotfContext::global()
     }
 
     #[test]
     fn remove_unknown_config_errors() {
         let env = Env::new();
         let _ = &env;
-        // Write an empty symlinks file
         let sf = SymlinksFile { symlinks: HashMap::new() };
         let path = env.dotfiles().join(".symlinks.toml");
         std::fs::write(&path, toml::to_string_pretty(&sf).unwrap()).unwrap();
 
-        let err = super::run(Some("nonexistent".into())).unwrap_err();
+        let err = super::run(&ctx(), Some("nonexistent".into())).unwrap_err();
         assert!(
             err.to_string().contains("nonexistent"),
             "should name the missing config: {}",
@@ -191,7 +194,7 @@ mod tests {
     fn remove_named_config_from_empty_errors_with_name() {
         let env = Env::new();
         let _ = &env;
-        let err = super::run(Some("cfg".into())).unwrap_err();
+        let err = super::run(&ctx(), Some("cfg".into())).unwrap_err();
         assert!(
             err.to_string().contains("cfg"),
             "should name the missing config: {}",

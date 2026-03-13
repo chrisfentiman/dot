@@ -5,23 +5,28 @@ use std::fs;
 use which::which;
 
 use crate::dotfiles;
+use crate::dotfiles::{DotfContext, DotfMode};
 use crate::runner::Runner;
 
-pub fn run(runner: &dyn Runner) -> Result<()> {
+pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
+    if matches!(&ctx.mode, DotfMode::Local(_)) {
+        return run_local(ctx);
+    }
+
     println!("{}", "┌─────────────────────────────────────┐".cyan());
     println!("{}", "│        dotf — dotfiles manager       │".cyan());
     println!("{}", "│    secret injection via pass/op/bw   │".cyan());
     println!("{}", "└─────────────────────────────────────┘".cyan());
     println!();
 
-    setup_dotfiles_dir(runner)?;
-    hint_secret_backends()?;
+    setup_dotfiles_dir(runner, ctx)?;
+    hint_secret_backends(ctx)?;
     #[cfg(target_os = "macos")]
-    run_brewfile(runner)?;
+    run_brewfile(runner, ctx)?;
     #[cfg(unix)]
     install_completions(runner)?;
 
-    let synced = dotfiles::render_and_symlink_all()?;
+    let synced = ctx.render_and_symlink_all()?;
 
     println!();
     println!("{}", "Setup complete!".green().bold());
@@ -40,8 +45,72 @@ pub fn run(runner: &dyn Runner) -> Result<()> {
     Ok(())
 }
 
-fn setup_dotfiles_dir(runner: &dyn Runner) -> Result<()> {
-    let dotfiles = dotfiles::dotfiles_dir()?;
+fn run_local(ctx: &DotfContext) -> Result<()> {
+    let dotf_dir = ctx.dotfiles_dir()?;
+    let configs_dir = ctx.configs_dir()?;
+
+    fs::create_dir_all(&configs_dir)
+        .with_context(|| format!("Failed to create {}", configs_dir.display()))?;
+    println!("{} Created {}", "✓".green(), dotf_dir.display());
+
+    // Append .gitignore entries (idempotent)
+    let root = ctx.root_dir()?;
+    let gitignore_path = root.join(".gitignore");
+    let existing = fs::read_to_string(&gitignore_path).unwrap_or_default();
+
+    let entries = [
+        ".dotf/configs/*",
+        "!.dotf/configs/*.tmpl",
+        ".dotf/.secrets.toml",
+    ];
+    let mut to_add = Vec::new();
+    for entry in &entries {
+        if !existing.lines().any(|line| line.trim() == *entry) {
+            to_add.push(*entry);
+        }
+    }
+
+    if !to_add.is_empty() {
+        let mut content = existing;
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        for entry in &to_add {
+            content.push_str(entry);
+            content.push('\n');
+        }
+        fs::write(&gitignore_path, &content)
+            .with_context(|| format!("Failed to write {}", gitignore_path.display()))?;
+        println!(
+            "{} Updated .gitignore ({} entries added)",
+            "✓".green(),
+            to_add.len()
+        );
+    } else {
+        println!("{} .gitignore already configured", "✓".green());
+    }
+
+    let synced = ctx.render_and_symlink_all()?;
+
+    println!();
+    println!("{}", "Local dotf setup complete!".green().bold());
+    if synced.is_empty() {
+        println!(
+            "  No configs yet. Run {} to add one.",
+            "dotf --dir . config <path>".cyan()
+        );
+    } else {
+        println!("  Symlinked configs:");
+        for entry in &synced {
+            println!("    {} {}", "✓".green(), entry);
+        }
+    }
+
+    Ok(())
+}
+
+fn setup_dotfiles_dir(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
+    let dotfiles = ctx.dotfiles_dir()?;
 
     if dotfiles.exists() {
         println!("{} {} already exists", "✓".green(), dotfiles.display());
@@ -122,8 +191,8 @@ fn setup_dotfiles_dir(runner: &dyn Runner) -> Result<()> {
     Ok(())
 }
 
-fn hint_secret_backends() -> Result<()> {
-    let secrets = dotfiles::read_secrets().unwrap_or_default();
+fn hint_secret_backends(ctx: &DotfContext) -> Result<()> {
+    let secrets = ctx.read_secrets().unwrap_or_default();
     let mut needs_pass = false;
     let mut needs_op = false;
     let mut needs_bw = false;
@@ -189,8 +258,8 @@ fn check_cli(bin: &str, name: &str, install_hint: &str) -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-fn run_brewfile(runner: &dyn Runner) -> Result<()> {
-    let brewfile = dotfiles::dotfiles_dir()?.join("Brewfile");
+fn run_brewfile(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
+    let brewfile = ctx.dotfiles_dir()?.join("Brewfile");
     if !brewfile.exists() {
         println!("{} No Brewfile found, skipping brew bundle", "·".dimmed());
         return Ok(());
@@ -253,22 +322,29 @@ mod tests {
     use crate::runner::MockRunner;
     use tempfile::TempDir;
 
-    fn init_env_with_dotfiles() -> (std::sync::MutexGuard<'static, ()>, TempDir) {
-        let g = crate::env_lock();
+    struct InitEnv {
+        // Drop order: _home_guard restores HOME, _tmp deletes dir, _lock releases mutex.
+        _home_guard: crate::EnvGuard,
+        _tmp: TempDir,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    fn init_env_with_dotfiles() -> InitEnv {
+        let lock = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let dotfiles = tmp.path().join("dotfiles");
         std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
         std::fs::write(dotfiles.join(".symlinks.toml"), "[symlinks]\n").unwrap();
         std::fs::write(dotfiles.join(".secrets.toml"), "[secrets]\n").unwrap();
-        unsafe { std::env::set_var("HOME", tmp.path()); }
-        (g, tmp)
+        let home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
+        InitEnv { _home_guard: home_guard, _tmp: tmp, _lock: lock }
     }
 
     #[test]
     fn init_dotfiles_already_exists_succeeds() {
-        let (_g, _tmp) = init_env_with_dotfiles();
-        // install_completions calls the runner; allow_unmatched avoids panic
+        let _env = init_env_with_dotfiles();
         let runner = MockRunner::new().allow_unmatched();
-        run(&runner).unwrap();
+        let ctx = DotfContext::global();
+        run(&runner, &ctx).unwrap();
     }
 }

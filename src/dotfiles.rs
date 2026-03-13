@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use handlebars::Handlebars;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -9,6 +9,177 @@ use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 use crate::secret;
+
+// ── DotfContext ──────────────────────────────────────────────────────────────
+
+/// Whether dotf operates on the global `~/dotfiles` store or a project-local
+/// `.dotf/` directory.
+#[derive(Debug, Clone)]
+pub enum DotfMode {
+    /// Global mode: data lives at `~/dotfiles`.
+    Global,
+    /// Local mode: data lives at `<project_root>/.dotf/`.
+    Local(PathBuf),
+}
+
+/// Carries the resolved operating mode through all commands.
+#[derive(Debug, Clone)]
+pub struct DotfContext {
+    pub mode: DotfMode,
+}
+
+impl DotfContext {
+    /// Construct a global-mode context (the default).
+    pub fn global() -> Self {
+        Self { mode: DotfMode::Global }
+    }
+
+    /// Construct a local-mode context rooted at `project_root`.
+    /// The directory does not need to exist yet (init creates it).
+    pub fn local(project_root: PathBuf) -> Self {
+        Self { mode: DotfMode::Local(project_root) }
+    }
+
+    /// The base directory where dotf stores its data.
+    ///
+    /// - Global: `~/dotfiles`
+    /// - Local:  `<project_root>/.dotf`
+    pub fn dotfiles_dir(&self) -> Result<PathBuf> {
+        match &self.mode {
+            DotfMode::Global => {
+                let home = dirs::home_dir()
+                    .ok_or_else(|| anyhow!("Cannot determine home directory"))?;
+                Ok(home.join("dotfiles"))
+            }
+            DotfMode::Local(root) => Ok(root.join(".dotf")),
+        }
+    }
+
+    pub fn configs_dir(&self) -> Result<PathBuf> {
+        Ok(self.dotfiles_dir()?.join("configs"))
+    }
+
+    pub fn secrets_toml_path(&self) -> Result<PathBuf> {
+        Ok(self.dotfiles_dir()?.join(".secrets.toml"))
+    }
+
+    pub fn symlinks_toml_path(&self) -> Result<PathBuf> {
+        Ok(self.dotfiles_dir()?.join(".symlinks.toml"))
+    }
+
+    pub fn read_secrets(&self) -> Result<SecretsFile> {
+        read_toml_file(&self.secrets_toml_path()?)
+    }
+
+    pub fn write_secrets(&self, secrets: &SecretsFile) -> Result<()> {
+        let path = self.secrets_toml_path()?;
+        let content =
+            toml::to_string_pretty(secrets).context("Failed to serialize .secrets.toml")?;
+        atomic_write(&path, content.as_bytes(), 0o600)
+            .with_context(|| format!("Failed to write {}", path.display()))
+    }
+
+    pub fn read_symlinks(&self) -> Result<SymlinksFile> {
+        read_toml_file(&self.symlinks_toml_path()?)
+    }
+
+    pub fn write_symlinks(&self, symlinks: &SymlinksFile) -> Result<()> {
+        let path = self.symlinks_toml_path()?;
+        let content =
+            toml::to_string_pretty(symlinks).context("Failed to serialize .symlinks.toml")?;
+        atomic_write(&path, content.as_bytes(), 0o600)
+            .with_context(|| format!("Failed to write {}", path.display()))
+    }
+
+    /// The root directory used as a security boundary for symlink targets.
+    ///
+    /// - Global: user's HOME directory
+    /// - Local:  the project root
+    pub fn root_dir(&self) -> Result<PathBuf> {
+        match &self.mode {
+            DotfMode::Global => {
+                dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))
+            }
+            DotfMode::Local(root) => Ok(root.clone()),
+        }
+    }
+
+    /// Resolve a symlink target string to an absolute path.
+    ///
+    /// - Global: expands `~/.gitconfig` → `/Users/chris/.gitconfig`
+    /// - Local:  joins project root + relative path (rejects absolute paths)
+    pub fn resolve_symlink_target(&self, target_str: &str) -> Result<PathBuf> {
+        match &self.mode {
+            DotfMode::Global => expand_tilde(target_str),
+            DotfMode::Local(root) => {
+                if target_str.starts_with('/') || target_str.starts_with('~') {
+                    anyhow::bail!(
+                        "Local mode symlink targets must be relative paths, got: {target_str}"
+                    );
+                }
+                Ok(root.join(target_str))
+            }
+        }
+    }
+
+    /// Render all templates, write outputs, and create symlinks.
+    pub fn render_and_symlink_all(&self) -> Result<Vec<String>> {
+        let secrets = self.read_secrets()?;
+        let symlinks = self.read_symlinks()?;
+        let configs = self.configs_dir()?;
+        let root = self.root_dir()?;
+        let mut done = Vec::new();
+
+        for (name, target_str) in &symlinks.symlinks {
+            let template_path = configs.join(format!("{name}.tmpl"));
+            let output_path = configs.join(name);
+            let link_path = self.resolve_symlink_target(target_str)?;
+
+            if !template_path.exists() {
+                eprintln!("Warning: template not found for {name}, skipping");
+                continue;
+            }
+
+            // Validate the symlink destination stays inside the root directory
+            // after resolving any `..` segments.
+            let canonical_link = link_path.canonicalize().unwrap_or_else(|_| {
+                let file_name = link_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy();
+                if file_name.contains("..") {
+                    return link_path.clone();
+                }
+                link_path
+                    .parent()
+                    .and_then(|p| p.canonicalize().ok())
+                    .map(|p| p.join(file_name.as_ref()))
+                    .unwrap_or_else(|| link_path.clone())
+            });
+            let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+            if !canonical_link.starts_with(&canonical_root) {
+                anyhow::bail!(
+                    "Refusing to symlink {name}: destination {} is outside {}",
+                    link_path.display(),
+                    match &self.mode {
+                        DotfMode::Global => "home directory".to_string(),
+                        DotfMode::Local(_) => "project root".to_string(),
+                    }
+                );
+            }
+
+            render_and_write(&template_path, &output_path, &secrets)
+                .with_context(|| format!("Failed to render {name}"))?;
+
+            ensure_symlink(&output_path, &link_path)
+                .with_context(|| format!("Failed to symlink {name}"))?;
+
+            done.push(format!("{name} -> {target_str}"));
+        }
+
+        Ok(done)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -60,15 +231,6 @@ pub struct SymlinksFile {
     pub symlinks: HashMap<String, String>,
 }
 
-pub fn dotfiles_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
-    Ok(home.join("dotfiles"))
-}
-
-pub fn configs_dir() -> Result<PathBuf> {
-    Ok(dotfiles_dir()?.join("configs"))
-}
-
 pub fn expand_tilde(path: &str) -> Result<PathBuf> {
     if let Some(rest) = path.strip_prefix("~/") {
         let home = dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
@@ -78,14 +240,6 @@ pub fn expand_tilde(path: &str) -> Result<PathBuf> {
     } else {
         Ok(PathBuf::from(path))
     }
-}
-
-pub fn secrets_toml_path() -> Result<PathBuf> {
-    Ok(dotfiles_dir()?.join(".secrets.toml"))
-}
-
-pub fn symlinks_toml_path() -> Result<PathBuf> {
-    Ok(dotfiles_dir()?.join(".symlinks.toml"))
 }
 
 fn read_toml_file<T: serde::de::DeserializeOwned + Default>(path: &Path) -> Result<T> {
@@ -98,62 +252,28 @@ fn read_toml_file<T: serde::de::DeserializeOwned + Default>(path: &Path) -> Resu
         .with_context(|| format!("Failed to parse {}", path.display()))
 }
 
-pub fn read_secrets() -> Result<SecretsFile> {
-    read_toml_file(&secrets_toml_path()?)
-}
-
-pub fn write_secrets(secrets: &SecretsFile) -> Result<()> {
-    let path = secrets_toml_path()?;
-    let content =
-        toml::to_string_pretty(secrets).context("Failed to serialize .secrets.toml")?;
-    atomic_write(&path, content.as_bytes(), 0o600)
-        .with_context(|| format!("Failed to write {}", path.display()))
-}
-
-pub fn read_symlinks() -> Result<SymlinksFile> {
-    read_toml_file(&symlinks_toml_path()?)
-}
-
-pub fn write_symlinks(symlinks: &SymlinksFile) -> Result<()> {
-    let path = symlinks_toml_path()?;
-    let content =
-        toml::to_string_pretty(symlinks).context("Failed to serialize .symlinks.toml")?;
-    atomic_write(&path, content.as_bytes(), 0o600)
-        .with_context(|| format!("Failed to write {}", path.display()))
-}
-
 pub fn fetch_secret(uri: &str) -> Result<Zeroizing<String>> {
     secret::fetch(uri)
 }
 
 pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<String> {
-    let template_content = fs::read_to_string(template_path)
+    let content = fs::read_to_string(template_path)
         .with_context(|| format!("Failed to read template {}", template_path.display()))?;
 
-    let mut hbs = Handlebars::new();
-    // Strict mode: missing placeholder → hard error instead of silent empty string.
-    hbs.set_strict_mode(true);
-    hbs.register_template_string("t", &template_content)
-        .with_context(|| format!("Failed to parse template {}", template_path.display()))?;
-
-    // Scan the template once and collect all referenced placeholder names.
-    // This is O(template_length) regardless of how many secrets are defined,
-    // instead of O(secrets × template_length) with per-secret `contains()`.
-    // Uses char-level iteration to correctly handle multi-byte UTF-8.
+    // ── Phase 1: scan for referenced placeholder names ───────────────────
+    // Single left-to-right pass over the template. Both `{{` and `}}` are
+    // ASCII, so byte-level `str::find` is correct even with multi-byte UTF-8.
     let referenced: std::collections::HashSet<&str> = {
         let mut set = std::collections::HashSet::new();
-        let mut search_from = 0;
-        while let Some(open) = template_content[search_from..].find("{{") {
-            let start = search_from + open + 2;
-            if start >= template_content.len() {
-                break;
-            }
-            if let Some(close) = template_content[start..].find("}}") {
-                let name = template_content[start..start + close].trim();
+        let mut rest = content.as_str();
+        while let Some(open) = rest.find("{{") {
+            let after_open = &rest[open + 2..];
+            if let Some(close) = after_open.find("}}") {
+                let name = after_open[..close].trim();
                 if !name.is_empty() {
                     set.insert(name);
                 }
-                search_from = start + close + 2;
+                rest = &after_open[close + 2..];
             } else {
                 break;
             }
@@ -161,17 +281,16 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
         set
     };
 
-    // Only fetch secrets that are actually referenced as Handlebars placeholders
-    // ({{NAME}}) in this template. Avoids invoking unrelated password manager CLIs
-    // when only a subset of secrets is needed.
-    let mut fetched: Vec<(String, Zeroizing<String>)> = Vec::new();
+    // ── Phase 2: fetch only the secrets this template actually uses ──────
+    let mut fetched: std::collections::HashMap<String, Zeroizing<String>> =
+        std::collections::HashMap::new();
     let mut failed: Vec<String> = Vec::new();
     for (name, uri) in &secrets.secrets {
         if !referenced.contains(name.as_str()) {
             continue;
         }
         match fetch_secret(uri) {
-            Ok(val) => fetched.push((name.clone(), val)),
+            Ok(val) => { fetched.insert(name.clone(), val); }
             Err(e) => failed.push(format!("{name} ({uri}): {e}")),
         }
     }
@@ -183,18 +302,56 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
         );
     }
 
-    // Build a borrow-only map for Handlebars — no additional owned String copies.
-    let values: HashMap<&str, &str> = fetched
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
+    // ── Phase 3: single-pass substitution ────────────────────────────────
+    // Walk the template left-to-right, emitting literal text and replacing
+    // {{NAME}} at the point of encounter. Substituted values are never
+    // re-scanned, so a secret value containing `{{OTHER}}` is emitted
+    // verbatim — no cross-secret injection or order-dependent corruption.
+    let mut result = String::with_capacity(content.len());
+    let mut rest = content.as_str();
+    let mut missing: Vec<String> = Vec::new();
+    let mut missing_set: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    let rendered = hbs
-        .render("t", &values)
-        .with_context(|| format!("Failed to render template {}", template_path.display()))?;
+    while let Some(open) = rest.find("{{") {
+        let after_open = &rest[open + 2..];
+        if let Some(close) = after_open.find("}}") {
+            let name = after_open[..close].trim();
+            result.push_str(&rest[..open]); // literal text before {{
+            if let Some(val) = fetched.get(name) {
+                result.push_str(val.as_str());
+            } else if name.is_empty() {
+                // Empty placeholder `{{}}` — emit as literal
+                result.push_str("{{}}");
+            } else {
+                if missing_set.insert(name.to_string()) {
+                    missing.push(name.to_string());
+                }
+                // Emit the placeholder as-is so the error is visible in context
+                result.push_str(&rest[open..open + 2 + close + 2]);
+            }
+            rest = &after_open[close + 2..]; // advance past }}
+        } else {
+            break; // unclosed {{ — emit remainder as literal
+        }
+    }
+    result.push_str(rest);
 
-    // `fetched` drops here, each Zeroizing<String> zeroes on drop.
-    Ok(rendered)
+    // Strict mode: report all unreplaced placeholders at once.
+    if !missing.is_empty() {
+        let list = missing
+            .iter()
+            .map(|n| format!("{{{{{n}}}}}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!(
+            "Template {} contains unreplaced placeholder(s): {}",
+            template_path.display(),
+            list
+        );
+    }
+
+    // `fetched` drops here; each Zeroizing<String> zeroes on drop.
+    Ok(result)
 }
 
 /// Write `data` to `path` atomically (write to a tempfile then rename) and
@@ -373,62 +530,6 @@ pub fn ensure_symlink(target: &Path, link: &Path) -> Result<()> {
     })
 }
 
-pub fn render_and_symlink_all() -> Result<Vec<String>> {
-    let secrets = read_secrets()?;
-    let symlinks = read_symlinks()?;
-    let configs = configs_dir()?;
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
-    let mut done = Vec::new();
-
-    for (name, target_str) in &symlinks.symlinks {
-        let template_path = configs.join(format!("{name}.tmpl"));
-        let output_path = configs.join(name);
-        let link_path = expand_tilde(target_str)?;
-
-        if !template_path.exists() {
-            eprintln!("Warning: template not found for {name}, skipping");
-            continue;
-        }
-
-        // Validate the symlink destination stays inside HOME after resolving
-        // any `..` segments. Without canonicalization, `~/../../etc/passwd` would
-        // pass `starts_with(HOME)` while actually escaping it.
-        let canonical_link = link_path.canonicalize().unwrap_or_else(|_| {
-            // If the file doesn't exist yet, canonicalize the parent and append
-            // the filename. Reject filenames containing `..` to prevent bypass.
-            let file_name = link_path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
-            if file_name.contains("..") {
-                return link_path.clone(); // will fail the starts_with check
-            }
-            link_path
-                .parent()
-                .and_then(|p| p.canonicalize().ok())
-                .map(|p| p.join(file_name.as_ref()))
-                .unwrap_or_else(|| link_path.clone())
-        });
-        let canonical_home = home.canonicalize().unwrap_or_else(|_| home.clone());
-        if !canonical_link.starts_with(&canonical_home) {
-            anyhow::bail!(
-                "Refusing to symlink {name}: destination {} is outside home directory",
-                link_path.display()
-            );
-        }
-
-        render_and_write(&template_path, &output_path, &secrets)
-            .with_context(|| format!("Failed to render {name}"))?;
-
-        ensure_symlink(&output_path, &link_path)
-            .with_context(|| format!("Failed to symlink {name}"))?;
-
-        done.push(format!("{name} -> {target_str}"));
-    }
-
-    Ok(done)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,12 +581,8 @@ mod tests {
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "email = {{EMAIL}}\ntoken = {{TOKEN}}").unwrap();
 
-        unsafe {
-            std::env::set_var("_DOTF_T_EMAIL", "chris@example.com");
-        }
-        unsafe {
-            std::env::set_var("_DOTF_T_TOKEN", "abc123");
-        }
+        let _email = crate::EnvGuard::set("_DOTF_T_EMAIL", "chris@example.com");
+        let _token = crate::EnvGuard::set("_DOTF_T_TOKEN", "abc123");
 
         let secrets = SecretsFile {
             secrets: HashMap::from([
@@ -496,13 +593,6 @@ mod tests {
 
         let rendered = render_template(&tmpl, &secrets).unwrap();
         assert_eq!(rendered, "email = chris@example.com\ntoken = abc123");
-
-        unsafe {
-            std::env::remove_var("_DOTF_T_EMAIL");
-        }
-        unsafe {
-            std::env::remove_var("_DOTF_T_TOKEN");
-        }
     }
 
     #[test]
@@ -516,7 +606,7 @@ mod tests {
         let err = render_template(&tmpl, &secrets).unwrap_err();
         let chain = format!("{err:?}");
         assert!(
-            chain.contains("MISSING") || chain.contains("strict"),
+            chain.contains("MISSING"),
             "unexpected error: {err}"
         );
     }
@@ -539,18 +629,13 @@ mod tests {
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "key = {{VAL}}").unwrap();
 
-        unsafe {
-            std::env::set_var("_DOTF_T_VAL", "line1\nline2");
-        }
+        let _val = crate::EnvGuard::set("_DOTF_T_VAL", "line1\nline2");
         let secrets = SecretsFile {
             secrets: HashMap::from([("VAL".to_string(), "env://_DOTF_T_VAL".to_string())]),
         };
 
         let rendered = render_template(&tmpl, &secrets).unwrap();
         assert_eq!(rendered, "key = line1\nline2");
-        unsafe {
-            std::env::remove_var("_DOTF_T_VAL");
-        }
     }
 
     #[test]
@@ -561,9 +646,7 @@ mod tests {
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "a = {{GOOD}}\nb = {{BAD}}").unwrap();
 
-        unsafe {
-            std::env::set_var("_DOTF_T_PARTIAL", "ok");
-        }
+        let _partial = crate::EnvGuard::set("_DOTF_T_PARTIAL", "ok");
         let secrets = SecretsFile {
             secrets: HashMap::from([
                 ("GOOD".to_string(), "env://_DOTF_T_PARTIAL".to_string()),
@@ -574,10 +657,6 @@ mod tests {
         let err = render_template(&tmpl, &secrets).unwrap_err();
         assert!(err.to_string().contains("BAD"), "error should name the failed secret");
         assert!(err.to_string().contains("1 secret(s)"));
-
-        unsafe {
-            std::env::remove_var("_DOTF_T_PARTIAL");
-        }
     }
 
     #[test]
@@ -588,9 +667,7 @@ mod tests {
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "key = {{USED}}").unwrap();
 
-        unsafe {
-            std::env::set_var("_DOTF_T_USED", "value");
-        }
+        let _used = crate::EnvGuard::set("_DOTF_T_USED", "value");
         // UNUSED references a missing env var — would fail if fetched.
         let secrets = SecretsFile {
             secrets: HashMap::from([
@@ -601,10 +678,6 @@ mod tests {
 
         let rendered = render_template(&tmpl, &secrets).unwrap();
         assert_eq!(rendered, "key = value");
-
-        unsafe {
-            std::env::remove_var("_DOTF_T_USED");
-        }
     }
 
     // ── ensure_symlink ───────────────────────────────────────────
@@ -697,9 +770,7 @@ mod tests {
         let tmpl = tmp.path().join("cfg.tmpl");
         let out = tmp.path().join("cfg");
 
-        unsafe {
-            std::env::set_var("_DOTF_T_HOST", "myhost");
-        }
+        let _host = crate::EnvGuard::set("_DOTF_T_HOST", "myhost");
         fs::write(&tmpl, "host = {{HOST}}").unwrap();
 
         let secrets = SecretsFile {
@@ -708,9 +779,6 @@ mod tests {
 
         render_and_write(&tmpl, &out, &secrets).unwrap();
         assert_eq!(fs::read_to_string(&out).unwrap(), "host = myhost");
-        unsafe {
-            std::env::remove_var("_DOTF_T_HOST");
-        }
     }
 
     // ── corrupted TOML ──────────────────────────────────────────
@@ -718,39 +786,39 @@ mod tests {
     fn read_secrets_corrupted_toml_errors() {
         let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
-        unsafe { std::env::set_var("HOME", tmp.path()); }
+        let _home = crate::EnvGuard::set("HOME", tmp.path().to_str().unwrap());
         let dotfiles = tmp.path().join("dotfiles");
         fs::create_dir_all(dotfiles.join("configs")).unwrap();
         fs::write(dotfiles.join(".secrets.toml"), "{{invalid toml!!!").unwrap();
-        let err = read_secrets().unwrap_err();
+        let ctx = DotfContext::global();
+        let err = ctx.read_secrets().unwrap_err();
         assert!(
             err.to_string().contains("parse") || err.to_string().contains("TOML"),
             "unexpected: {err}"
         );
-        unsafe { std::env::remove_var("HOME"); }
     }
 
     #[test]
     fn read_symlinks_corrupted_toml_errors() {
         let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
-        unsafe { std::env::set_var("HOME", tmp.path()); }
+        let _home = crate::EnvGuard::set("HOME", tmp.path().to_str().unwrap());
         let dotfiles = tmp.path().join("dotfiles");
         fs::create_dir_all(dotfiles.join("configs")).unwrap();
         fs::write(dotfiles.join(".symlinks.toml"), "not valid toml [[[").unwrap();
-        let err = read_symlinks().unwrap_err();
+        let ctx = DotfContext::global();
+        let err = ctx.read_symlinks().unwrap_err();
         assert!(
             err.to_string().contains("parse") || err.to_string().contains("TOML"),
             "unexpected: {err}"
         );
-        unsafe { std::env::remove_var("HOME"); }
     }
 
     #[test]
     fn read_secrets_unknown_field_rejected() {
         let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
-        unsafe { std::env::set_var("HOME", tmp.path()); }
+        let _home = crate::EnvGuard::set("HOME", tmp.path().to_str().unwrap());
         let dotfiles = tmp.path().join("dotfiles");
         fs::create_dir_all(dotfiles.join("configs")).unwrap();
         fs::write(
@@ -758,13 +826,13 @@ mod tests {
             "[secrets]\nFOO = \"env://FOO\"\n\n[extra]\nBAD = true\n",
         )
         .unwrap();
-        let err = read_secrets().unwrap_err();
+        let ctx = DotfContext::global();
+        let err = ctx.read_secrets().unwrap_err();
         let chain = format!("{err:?}");
         assert!(
             chain.contains("unknown") || chain.contains("extra"),
             "deny_unknown_fields should reject: {chain}"
         );
-        unsafe { std::env::remove_var("HOME"); }
     }
 
     // ── atomic_write permission denied ──────────────────────────
@@ -859,11 +927,11 @@ mod tests {
         );
     }
 
-    // ── Handlebars safety ───────────────────────────────────────
+    // ── Template safety ─────────────────────────────────────────
     #[test]
-    fn handlebars_rejects_unknown_helpers() {
-        // Verify that our Handlebars instance does not allow arbitrary helper
-        // invocation (e.g. {{env "SECRET"}}) — only plain {{PLACEHOLDER}} works.
+    fn template_rejects_unknown_placeholders() {
+        // Verify that unreplaced {{...}} blocks are caught — only defined
+        // secret names get replaced; anything else is an error.
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "{{dangerous_helper 'arg'}}").unwrap();
@@ -872,8 +940,8 @@ mod tests {
         let err = render_template(&tmpl, &secrets).unwrap_err();
         let chain = format!("{err:?}");
         assert!(
-            chain.contains("dangerous_helper") || chain.contains("not defined"),
-            "unknown helpers should fail: {chain}"
+            chain.contains("unreplaced placeholder"),
+            "unknown placeholders should fail: {chain}"
         );
     }
 
@@ -885,10 +953,8 @@ mod tests {
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "{{A}}{{B}}").unwrap();
 
-        unsafe {
-            std::env::set_var("_DOTF_T_ADJ_A", "hello");
-            std::env::set_var("_DOTF_T_ADJ_B", "world");
-        }
+        let _a = crate::EnvGuard::set("_DOTF_T_ADJ_A", "hello");
+        let _b = crate::EnvGuard::set("_DOTF_T_ADJ_B", "world");
         let secrets = SecretsFile {
             secrets: HashMap::from([
                 ("A".to_string(), "env://_DOTF_T_ADJ_A".to_string()),
@@ -897,10 +963,27 @@ mod tests {
         };
         let rendered = render_template(&tmpl, &secrets).unwrap();
         assert_eq!(rendered, "helloworld");
-        unsafe {
-            std::env::remove_var("_DOTF_T_ADJ_A");
-            std::env::remove_var("_DOTF_T_ADJ_B");
-        }
+    }
+
+    #[test]
+    fn render_template_secret_value_containing_braces_not_reinterpreted() {
+        let _g = crate::env_lock();
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        // Template has {{A}} and {{B}}. A's value contains "{{B}}" literally.
+        // The single-pass renderer must NOT re-substitute B inside A's value.
+        fs::write(&tmpl, "first={{A}} second={{B}}").unwrap();
+
+        let _a = crate::EnvGuard::set("_DOTF_T_INJ_A", "value_with_{{B}}_inside");
+        let _b = crate::EnvGuard::set("_DOTF_T_INJ_B", "real_b");
+        let secrets = SecretsFile {
+            secrets: HashMap::from([
+                ("A".to_string(), "env://_DOTF_T_INJ_A".to_string()),
+                ("B".to_string(), "env://_DOTF_T_INJ_B".to_string()),
+            ]),
+        };
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "first=value_with_{{B}}_inside second=real_b");
     }
 
     #[test]
@@ -911,13 +994,12 @@ mod tests {
         // Multi-byte UTF-8 characters around placeholders
         fs::write(&tmpl, "emoji 👍 {{VAL}} done 🎉").unwrap();
 
-        unsafe { std::env::set_var("_DOTF_T_UNI", "ok"); }
+        let _uni = crate::EnvGuard::set("_DOTF_T_UNI", "ok");
         let secrets = SecretsFile {
             secrets: HashMap::from([("VAL".to_string(), "env://_DOTF_T_UNI".to_string())]),
         };
         let rendered = render_template(&tmpl, &secrets).unwrap();
         assert_eq!(rendered, "emoji 👍 ok done 🎉");
-        unsafe { std::env::remove_var("_DOTF_T_UNI"); }
     }
 
     #[test]
@@ -928,7 +1010,7 @@ mod tests {
         fs::write(&tmpl, "prefix {{UNCLOSED no closing").unwrap();
 
         let secrets = SecretsFile::default();
-        // This will fail at Handlebars parse time (strict mode), which is fine
+        // No matching close }} so no placeholder detected — should not panic
         let result = render_template(&tmpl, &secrets);
         // We just care that it doesn't panic — error is acceptable
         let _ = result;
@@ -943,11 +1025,9 @@ mod tests {
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "{{A}}{{B}}{{C}}").unwrap();
 
-        unsafe {
-            std::env::set_var("_DOTF_T_3A", "1");
-            std::env::set_var("_DOTF_T_3B", "2");
-            std::env::set_var("_DOTF_T_3C", "3");
-        }
+        let _a = crate::EnvGuard::set("_DOTF_T_3A", "1");
+        let _b = crate::EnvGuard::set("_DOTF_T_3B", "2");
+        let _c = crate::EnvGuard::set("_DOTF_T_3C", "3");
         let secrets = SecretsFile {
             secrets: HashMap::from([
                 ("A".to_string(), "env://_DOTF_T_3A".to_string()),
@@ -959,11 +1039,6 @@ mod tests {
         };
         let rendered = render_template(&tmpl, &secrets).unwrap();
         assert_eq!(rendered, "123");
-        unsafe {
-            std::env::remove_var("_DOTF_T_3A");
-            std::env::remove_var("_DOTF_T_3B");
-            std::env::remove_var("_DOTF_T_3C");
-        }
     }
 
     #[test]
@@ -973,13 +1048,11 @@ mod tests {
         // not before it. Template: "{{X}}{{Y}}" — if scanner retreats, Y might be missed.
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
-        // Y is required — if scanner misses it, Handlebars will error
+        // Y is required — if scanner misses it, strict mode will error
         fs::write(&tmpl, "{{X}}{{Y}}").unwrap();
 
-        unsafe {
-            std::env::set_var("_DOTF_T_OX", "a");
-            std::env::set_var("_DOTF_T_OY", "b");
-        }
+        let _ox = crate::EnvGuard::set("_DOTF_T_OX", "a");
+        let _oy = crate::EnvGuard::set("_DOTF_T_OY", "b");
         let secrets = SecretsFile {
             secrets: HashMap::from([
                 ("X".to_string(), "env://_DOTF_T_OX".to_string()),
@@ -988,10 +1061,6 @@ mod tests {
         };
         let rendered = render_template(&tmpl, &secrets).unwrap();
         assert_eq!(rendered, "ab");
-        unsafe {
-            std::env::remove_var("_DOTF_T_OX");
-            std::env::remove_var("_DOTF_T_OY");
-        }
     }
 
     // ── world-writable directory check ─────────────────────────
@@ -1010,6 +1079,151 @@ mod tests {
         assert!(
             err.to_string().contains("world-writable"),
             "should reject world-writable dir: {err}"
+        );
+    }
+
+    // ── DotfContext ─────────────────────────────────────────────
+
+    #[test]
+    fn ctx_global_dotfiles_dir() {
+        let _g = crate::env_lock();
+        let ctx = DotfContext::global();
+        let dir = ctx.dotfiles_dir().unwrap();
+        assert!(dir.ends_with("dotfiles"));
+    }
+
+    #[test]
+    fn ctx_local_dotfiles_dir() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = DotfContext::local(tmp.path().to_path_buf());
+        let dir = ctx.dotfiles_dir().unwrap();
+        assert_eq!(dir, tmp.path().join(".dotf"));
+    }
+
+    #[test]
+    fn ctx_local_configs_dir() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = DotfContext::local(tmp.path().to_path_buf());
+        assert_eq!(ctx.configs_dir().unwrap(), tmp.path().join(".dotf/configs"));
+    }
+
+    #[test]
+    fn ctx_local_resolve_symlink_target_relative() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = DotfContext::local(tmp.path().to_path_buf());
+        let resolved = ctx.resolve_symlink_target(".env").unwrap();
+        assert_eq!(resolved, tmp.path().join(".env"));
+    }
+
+    #[test]
+    fn ctx_local_resolve_symlink_target_rejects_absolute() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = DotfContext::local(tmp.path().to_path_buf());
+        let err = ctx.resolve_symlink_target("/etc/hosts").unwrap_err();
+        assert!(err.to_string().contains("relative paths"));
+    }
+
+    #[test]
+    fn ctx_local_resolve_symlink_target_rejects_tilde() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = DotfContext::local(tmp.path().to_path_buf());
+        let err = ctx.resolve_symlink_target("~/.gitconfig").unwrap_err();
+        assert!(err.to_string().contains("relative paths"));
+    }
+
+    #[test]
+    fn ctx_local_root_dir() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = DotfContext::local(tmp.path().to_path_buf());
+        assert_eq!(ctx.root_dir().unwrap(), tmp.path().to_path_buf());
+    }
+
+    #[test]
+    fn ctx_local_read_write_secrets_roundtrip() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = DotfContext::local(tmp.path().to_path_buf());
+        fs::create_dir_all(ctx.dotfiles_dir().unwrap()).unwrap();
+
+        let mut sf = SecretsFile::default();
+        sf.secrets.insert("KEY".to_string(), "env://KEY".to_string());
+        ctx.write_secrets(&sf).unwrap();
+        let loaded = ctx.read_secrets().unwrap();
+        assert_eq!(loaded.secrets["KEY"], "env://KEY");
+    }
+
+    #[test]
+    fn ctx_local_read_write_symlinks_roundtrip() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = DotfContext::local(tmp.path().to_path_buf());
+        fs::create_dir_all(ctx.dotfiles_dir().unwrap()).unwrap();
+
+        let mut sl = SymlinksFile::default();
+        sl.symlinks.insert(".env".to_string(), ".env".to_string());
+        ctx.write_symlinks(&sl).unwrap();
+        let loaded = ctx.read_symlinks().unwrap();
+        assert_eq!(loaded.symlinks[".env"], ".env");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ctx_local_render_and_symlink_all() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let ctx = DotfContext::local(root.to_path_buf());
+
+        let dotf_dir = root.join(".dotf");
+        let configs = dotf_dir.join("configs");
+        fs::create_dir_all(&configs).unwrap();
+
+        // Template with no secrets
+        fs::write(configs.join(".env.tmpl"), "DB_HOST=localhost\n").unwrap();
+
+        // Symlinks TOML
+        let sl = SymlinksFile {
+            symlinks: HashMap::from([(".env".to_string(), ".env".to_string())]),
+        };
+        fs::write(
+            dotf_dir.join(".symlinks.toml"),
+            toml::to_string_pretty(&sl).unwrap(),
+        ).unwrap();
+        fs::write(dotf_dir.join(".secrets.toml"), "[secrets]\n").unwrap();
+
+        let done = ctx.render_and_symlink_all().unwrap();
+        assert_eq!(done.len(), 1);
+
+        // Symlink should exist at project root
+        let link = root.join(".env");
+        assert!(link.symlink_metadata().is_ok());
+        assert_eq!(fs::read_to_string(&link).unwrap(), "DB_HOST=localhost\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ctx_local_render_rejects_escape() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let ctx = DotfContext::local(root.to_path_buf());
+
+        let dotf_dir = root.join(".dotf");
+        let configs = dotf_dir.join("configs");
+        fs::create_dir_all(&configs).unwrap();
+
+        fs::write(configs.join("evil.tmpl"), "x").unwrap();
+
+        // Target tries to escape via ../
+        let sl = SymlinksFile {
+            symlinks: HashMap::from([("evil".to_string(), "../escape".to_string())]),
+        };
+        fs::write(
+            dotf_dir.join(".symlinks.toml"),
+            toml::to_string_pretty(&sl).unwrap(),
+        ).unwrap();
+        fs::write(dotf_dir.join(".secrets.toml"), "[secrets]\n").unwrap();
+
+        let err = ctx.render_and_symlink_all().unwrap_err();
+        assert!(
+            err.to_string().contains("outside"),
+            "should reject path traversal: {err}"
         );
     }
 }

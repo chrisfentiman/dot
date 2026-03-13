@@ -19,7 +19,7 @@ clap_complete = "4"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-handlebars = "6"
+
 dirs = "5"
 colored = "2"
 dialoguer = "0.11"

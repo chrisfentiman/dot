@@ -1,10 +1,11 @@
 use crate::dotfiles;
+use crate::dotfiles::{DotfContext, DotfMode};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use dialoguer::{Confirm, Input, Password, theme::ColorfulTheme};
 use std::fs;
 
-pub fn run(path: Option<String>) -> Result<()> {
+pub fn run(ctx: &DotfContext, path: Option<String>) -> Result<()> {
     let raw_path = match path {
         Some(p) => p,
         None => Input::with_theme(&ColorfulTheme::default())
@@ -98,7 +99,7 @@ pub fn run(path: Option<String>) -> Result<()> {
         new_secrets.push((placeholder, uri));
     }
 
-    let configs_dir = dotfiles::configs_dir()?;
+    let configs_dir = ctx.configs_dir()?;
     fs::create_dir_all(&configs_dir).context("Failed to create configs dir")?;
 
     let template_path = configs_dir.join(format!("{filename}.tmpl"));
@@ -110,11 +111,11 @@ pub fn run(path: Option<String>) -> Result<()> {
         template_path.display()
     );
 
-    let mut secrets = dotfiles::read_secrets()?;
+    let mut secrets = ctx.read_secrets()?;
     for (name, uri) in &new_secrets {
         secrets.secrets.insert(name.clone(), uri.clone());
     }
-    dotfiles::write_secrets(&secrets)?;
+    ctx.write_secrets(&secrets)?;
     if !new_secrets.is_empty() {
         println!(
             "{} Added {} secret(s) to .secrets.toml",
@@ -124,18 +125,35 @@ pub fn run(path: Option<String>) -> Result<()> {
     }
 
     // Derive the symlink target from the original file's actual location
-    let home = dirs::home_dir().context("Cannot determine home directory")?;
-    let target_str = if let Ok(rel) = source_path.strip_prefix(&home) {
-        format!("~/{}", rel.display())
-    } else {
-        source_path.to_string_lossy().to_string()
+    let target_str = match &ctx.mode {
+        DotfMode::Global => {
+            let home = dirs::home_dir().context("Cannot determine home directory")?;
+            if let Ok(rel) = source_path.strip_prefix(&home) {
+                format!("~/{}", rel.display())
+            } else {
+                source_path.to_string_lossy().to_string()
+            }
+        }
+        DotfMode::Local(root) => {
+            let root_canon = root.canonicalize().unwrap_or_else(|_| root.clone());
+            let source_canon = source_path.canonicalize().unwrap_or(source_path.clone());
+            if let Ok(rel) = source_canon.strip_prefix(&root_canon) {
+                rel.display().to_string()
+            } else {
+                anyhow::bail!(
+                    "File {} is outside the project root {}",
+                    source_path.display(),
+                    root.display()
+                );
+            }
+        }
     };
 
-    let mut symlinks = dotfiles::read_symlinks()?;
+    let mut symlinks = ctx.read_symlinks()?;
     symlinks
         .symlinks
         .insert(filename.clone(), target_str.clone());
-    dotfiles::write_symlinks(&symlinks)?;
+    ctx.write_symlinks(&symlinks)?;
     println!("{} Added symlink mapping to .symlinks.toml", "✓".green());
 
     let output_path = configs_dir.join(&filename);
@@ -147,7 +165,7 @@ pub fn run(path: Option<String>) -> Result<()> {
         output_path.display()
     );
 
-    let link_path = dotfiles::expand_tilde(&target_str)?;
+    let link_path = ctx.resolve_symlink_target(&target_str)?;
     dotfiles::ensure_symlink(&output_path, &link_path)
         .with_context(|| format!("Failed to create symlink for {filename}"))?;
     println!(
@@ -159,9 +177,10 @@ pub fn run(path: Option<String>) -> Result<()> {
 
     println!();
     println!(
-        "{} {} is now managed by dot",
+        "{} {} is now managed by dotf",
         "✓".green().bold(),
         filename.cyan()
     );
+
     Ok(())
 }

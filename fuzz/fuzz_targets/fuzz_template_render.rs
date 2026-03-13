@@ -1,4 +1,4 @@
-//! Fuzz Handlebars template rendering.
+//! Fuzz template rendering.
 //!
 //! Goals:
 //!   - render_template() must never panic on arbitrary template content

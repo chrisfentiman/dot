@@ -5,9 +5,10 @@ use similar::{ChangeTag, TextDiff};
 use std::fs;
 
 use crate::dotfiles;
+use crate::dotfiles::DotfContext;
 
-pub fn run(name: Option<String>) -> Result<()> {
-    let symlinks = dotfiles::read_symlinks()?;
+pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
+    let symlinks = ctx.read_symlinks()?;
 
     if symlinks.symlinks.is_empty() {
         anyhow::bail!("No managed configs found.");
@@ -39,8 +40,8 @@ pub fn run(name: Option<String>) -> Result<()> {
         }
     };
 
-    let secrets = dotfiles::read_secrets()?;
-    let configs_dir = dotfiles::configs_dir()?;
+    let secrets = ctx.read_secrets()?;
+    let configs_dir = ctx.configs_dir()?;
     let mut any_diff = false;
 
     for config_name in &names_to_diff {
