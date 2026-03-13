@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use dialoguer::{Select, theme::ColorfulTheme};
+use similar::{ChangeTag, TextDiff};
 use std::fs;
 
 use crate::dotfiles;
@@ -113,48 +114,12 @@ fn print_diff(old: &[&str], new: &[&str]) {
 /// Returns a human-readable diff of two line slices.
 /// Exposed `pub` so fuzz targets and tests can call it without going through I/O.
 pub fn compute_diff(old: &[&str], new: &[&str]) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut oi = 0usize;
-    let mut ni = 0usize;
-
-    while oi < old.len() || ni < new.len() {
-        if oi < old.len() && ni < new.len() && old[oi] == new[ni] {
-            out.push(format!("  {}", old[oi]));
-            oi += 1;
-            ni += 1;
-        } else {
-            let lookahead = 4;
-            let mut matched = false;
-            for delta in 1..=lookahead {
-                if ni + delta < new.len() && oi < old.len() && old[oi] == new[ni + delta] {
-                    for line in &new[ni..ni + delta] {
-                        out.push(format!("+ {line}"));
-                    }
-                    ni += delta;
-                    matched = true;
-                    break;
-                }
-                if oi + delta < old.len() && ni < new.len() && old[oi + delta] == new[ni] {
-                    for line in &old[oi..oi + delta] {
-                        out.push(format!("- {line}"));
-                    }
-                    oi += delta;
-                    matched = true;
-                    break;
-                }
-            }
-            if !matched {
-                if oi < old.len() {
-                    out.push(format!("- {}", old[oi]));
-                    oi += 1;
-                }
-                if ni < new.len() {
-                    out.push(format!("+ {}", new[ni]));
-                    ni += 1;
-                }
-            }
-        }
-    }
-
-    out
+    let diff = TextDiff::from_slices(old, new);
+    diff.iter_all_changes()
+        .map(|change| match change.tag() {
+            ChangeTag::Equal => format!("  {}", change.value()),
+            ChangeTag::Insert => format!("+ {}", change.value()),
+            ChangeTag::Delete => format!("- {}", change.value()),
+        })
+        .collect()
 }

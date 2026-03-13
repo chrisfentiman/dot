@@ -1,7 +1,7 @@
 use crate::dotfiles;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
-use dialoguer::{Confirm, Input, theme::ColorfulTheme};
+use dialoguer::{Confirm, Input, Password, theme::ColorfulTheme};
 use std::fs;
 
 pub fn run(path: Option<String>) -> Result<()> {
@@ -47,9 +47,11 @@ pub fn run(path: Option<String>) -> Result<()> {
             break;
         }
 
-        let secret_value: String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("Paste the exact secret value to replace")
-            .interact_text()
+        let secret_value: String = Password::with_theme(&ColorfulTheme::default())
+            .with_prompt(
+                "Paste the plaintext value to replace in the file (not stored — used to identify it)",
+            )
+            .interact()
             .context("Failed to read secret value")?;
 
         if !content.contains(&secret_value) {

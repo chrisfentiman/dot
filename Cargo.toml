@@ -6,11 +6,11 @@ description = "Dotfiles manager with pluggable secret injection (pass, op, bw, e
 license = "MIT"
 
 [lib]
-name = "dot"
+name = "dotf"
 path = "src/lib.rs"
 
 [[bin]]
-name = "dot"
+name = "dotf"
 path = "src/main.rs"
 
 [dependencies]
@@ -27,9 +27,11 @@ colored = "2"
 dialoguer = "0.11"
 which = "6"
 chrono = "0.4"
+similar = "2"
+tempfile = "3"
+zeroize = "1"
 
 [dev-dependencies]
-tempfile = "3"
 
 [profile.release]
 opt-level = 3

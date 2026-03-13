@@ -14,7 +14,7 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
 
-    let Ok(result) = dot::dotfiles::expand_tilde(s) else {
+    let Ok(result) = dotf::dotfiles::expand_tilde(s) else {
         return;
     };
 

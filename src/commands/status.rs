@@ -18,25 +18,38 @@ pub fn run() -> Result<()> {
     if symlinks.symlinks.is_empty() {
         println!(
             "No managed configs. Run {} to add one.",
-            "dot config <path>".cyan()
+            "dotf config <path>".cyan()
         );
         return Ok(());
     }
 
     let configs_dir = dotfiles::configs_dir()?;
 
+    let mut entries: Vec<_> = symlinks.symlinks.iter().collect();
+    entries.sort_by_key(|(k, _)| k.as_str());
+
+    let name_width = entries
+        .iter()
+        .map(|(k, _)| k.len())
+        .max()
+        .unwrap_or(6)
+        .max(6);
+    let target_width = entries
+        .iter()
+        .map(|(_, v)| v.len())
+        .max()
+        .unwrap_or(6)
+        .max(6);
+
     println!(
-        "{:<30}  {:<40}  {}",
+        "{:<name_width$}  {:<target_width$}  {}",
         "CONFIG".bold(),
         "TARGET".bold(),
         "STATUS".bold()
     );
-    println!("{}", "─".repeat(80).dimmed());
+    println!("{}", "─".repeat(name_width + target_width + 10).dimmed());
 
-    let mut entries: Vec<_> = symlinks.symlinks.iter().collect();
-    entries.sort_by_key(|(k, _)| k.as_str());
-
-    for (name, target_str) in entries {
+    for (name, target_str) in &entries {
         let template_path = configs_dir.join(format!("{name}.tmpl"));
         let output_path = configs_dir.join(name);
 
@@ -72,7 +85,12 @@ pub fn run() -> Result<()> {
             ConfigStatus::WrongTarget(t) => format!("wrong target: {}", t.red()),
         };
 
-        println!("{:<30}  {:<40}  {}", name.cyan(), target_str, status_str);
+        println!(
+            "{:<name_width$}  {:<target_width$}  {}",
+            name.cyan(),
+            target_str,
+            status_str
+        );
     }
 
     Ok(())

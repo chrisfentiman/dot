@@ -20,7 +20,7 @@ fuzz_target!(|data: &[u8]| {
     let old_lines: Vec<&str> = old_str.lines().collect();
     let new_lines: Vec<&str> = new_str.lines().collect();
 
-    let result = dot::commands::diff::compute_diff(&old_lines, &new_lines);
+    let result = dotf::commands::diff::compute_diff(&old_lines, &new_lines);
 
     // Invariant 1: equal inputs produce no +/- lines
     if old_str == new_str {

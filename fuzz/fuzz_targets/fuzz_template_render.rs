@@ -26,7 +26,7 @@ fuzz_target!(|data: &[u8]| {
     unsafe { std::env::set_var("_FUZZ_VAL_A", "aaa"); }
     unsafe { std::env::set_var("_FUZZ_VAL_B", "bbb"); }
 
-    let secrets = dot::dotfiles::SecretsFile {
+    let secrets = dotf::dotfiles::SecretsFile {
         secrets: HashMap::from([
             ("A".to_string(), "env://_FUZZ_VAL_A".to_string()),
             ("B".to_string(), "env://_FUZZ_VAL_B".to_string()),
@@ -34,5 +34,5 @@ fuzz_target!(|data: &[u8]| {
     };
 
     // Must not panic
-    let _ = dot::dotfiles::render_template(&tmpl_path, &secrets);
+    let _ = dotf::dotfiles::render_template(&tmpl_path, &secrets);
 });

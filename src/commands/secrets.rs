@@ -39,7 +39,7 @@ fn list() -> Result<()> {
     if secrets.secrets.is_empty() {
         println!(
             "No secrets configured. Run {} to add one.",
-            "dot secrets add <name> <uri>".cyan()
+            "dotf secrets add <name> <uri>".cyan()
         );
         return Ok(());
     }
@@ -103,18 +103,19 @@ fn validate() -> Result<()> {
     entries.sort_by_key(|(k, _)| k.as_str());
 
     for (name, uri) in entries {
-        match dotfiles::fetch_secret(uri) {
+        match secret::fetch(uri) {
             Ok(_) => {
                 println!("{} {} ({})", "✓".green(), name.cyan(), uri.dimmed());
                 passed += 1;
             }
             Err(e) => {
+                let err_str = e.to_string();
                 println!(
                     "{} {} ({}) — {}",
                     "✗".red(),
                     name.cyan(),
                     uri.dimmed(),
-                    e.to_string().red()
+                    err_str.red()
                 );
                 failed += 1;
             }

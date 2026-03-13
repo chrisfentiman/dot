@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use std::process::Command;
+use zeroize::Zeroizing;
 
 /// Fetch a secret value from any supported backend based on URI scheme.
 ///
@@ -8,7 +9,7 @@ use std::process::Command;
 ///   op://vault/item/field     — 1Password CLI (`op`)
 ///   bw://item-name/field      — Bitwarden CLI (`bw`, requires BW_SESSION env var)
 ///   env://VAR_NAME            — environment variable (useful for CI)
-pub fn fetch(uri: &str) -> Result<String> {
+pub fn fetch(uri: &str) -> Result<Zeroizing<String>> {
     if let Some(path) = uri.strip_prefix("pass://") {
         fetch_pass(path, uri)
     } else if let Some(path) = uri.strip_prefix("op://") {
@@ -41,7 +42,7 @@ pub fn backend_name(uri: &str) -> &'static str {
 }
 
 // pass item get pass://vault/item --fields password
-fn fetch_pass(path: &str, original_uri: &str) -> Result<String> {
+fn fetch_pass(path: &str, original_uri: &str) -> Result<Zeroizing<String>> {
     let full_uri = format!("pass://{path}");
     let output = Command::new("pass")
         .args(["item", "get", &full_uri, "--fields", "password"])
@@ -55,11 +56,11 @@ fn fetch_pass(path: &str, original_uri: &str) -> Result<String> {
 
     let value = String::from_utf8(output.stdout)
         .map_err(|_| anyhow!("Proton Pass output for {original_uri} is not valid UTF-8"))?;
-    Ok(value.trim().to_string())
+    Ok(Zeroizing::new(value.trim().to_string()))
 }
 
 // op read op://vault/item/field
-fn fetch_op(path: &str, original_uri: &str) -> Result<String> {
+fn fetch_op(path: &str, original_uri: &str) -> Result<Zeroizing<String>> {
     let full_uri = format!("op://{path}");
     let output = Command::new("op")
         .args(["read", &full_uri])
@@ -77,11 +78,11 @@ fn fetch_op(path: &str, original_uri: &str) -> Result<String> {
 
     let value = String::from_utf8(output.stdout)
         .map_err(|_| anyhow!("1Password output for {original_uri} is not valid UTF-8"))?;
-    Ok(value.trim().to_string())
+    Ok(Zeroizing::new(value.trim().to_string()))
 }
 
 // bw get password <item-name>  (field after last / if present, else "password")
-fn fetch_bw(path: &str, original_uri: &str) -> Result<String> {
+fn fetch_bw(path: &str, original_uri: &str) -> Result<Zeroizing<String>> {
     // bw://item-name/field or bw://item-name
     let (item, field) = match path.rsplit_once('/') {
         Some((item, field)) => (item, field),
@@ -107,11 +108,13 @@ fn fetch_bw(path: &str, original_uri: &str) -> Result<String> {
 
     let value = String::from_utf8(output.stdout)
         .map_err(|_| anyhow!("Bitwarden output for {original_uri} is not valid UTF-8"))?;
-    Ok(value.trim().to_string())
+    Ok(Zeroizing::new(value.trim().to_string()))
 }
 
-fn fetch_env(var: &str) -> Result<String> {
-    std::env::var(var).map_err(|_| anyhow!("Environment variable '{}' is not set", var))
+fn fetch_env(var: &str) -> Result<Zeroizing<String>> {
+    std::env::var(var)
+        .map(Zeroizing::new)
+        .map_err(|_| anyhow!("Environment variable '{}' is not set", var))
 }
 
 #[cfg(test)]
@@ -157,15 +160,21 @@ mod tests {
     // ── fetch: env backend ───────────────────────────────────────
     #[test]
     fn fetch_env_present() {
-        unsafe { std::env::set_var("_DOTF_TEST_SECRET", "hunter2"); }
+        unsafe {
+            std::env::set_var("_DOTF_TEST_SECRET", "hunter2");
+        }
         let val = fetch("env://_DOTF_TEST_SECRET").unwrap();
-        assert_eq!(val, "hunter2");
-        unsafe { std::env::remove_var("_DOTF_TEST_SECRET"); }
+        assert_eq!(val.as_str(), "hunter2");
+        unsafe {
+            std::env::remove_var("_DOTF_TEST_SECRET");
+        }
     }
 
     #[test]
     fn fetch_env_missing_errors() {
-        unsafe { std::env::remove_var("_DOTF_TEST_MISSING_XYZ"); }
+        unsafe {
+            std::env::remove_var("_DOTF_TEST_MISSING_XYZ");
+        }
         let err = fetch("env://_DOTF_TEST_MISSING_XYZ").unwrap_err();
         assert!(err.to_string().contains("_DOTF_TEST_MISSING_XYZ"));
     }

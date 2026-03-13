@@ -15,9 +15,9 @@ fuzz_target!(|data: &[u8]| {
     };
 
     // backend_name must never panic
-    let _ = dot::secret::backend_name(s);
+    let _ = dotf::secret::backend_name(s);
 
     // fetch must never panic — it may error, that's fine
     // For env:// URIs we can't control env vars in the fuzzer so errors are expected
-    let _ = dot::secret::fetch(s);
+    let _ = dotf::secret::fetch(s);
 });

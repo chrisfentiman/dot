@@ -1,4 +1,5 @@
-use dot::commands;
+use dotf::commands;
+use dotf::runner::SystemRunner;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
@@ -56,12 +57,12 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Init => commands::init::run(),
+        Command::Init => commands::init::run(&SystemRunner),
         Command::Config { path } => commands::config::run(path),
-        Command::Modify { name } => commands::modify::run(name),
+        Command::Modify { name } => commands::modify::run(&SystemRunner, name),
         Command::Diff { name } => commands::diff::run(name),
         Command::Remove { name } => commands::remove::run(name),
-        Command::Sync => commands::sync::run(),
+        Command::Sync => commands::sync::run(&SystemRunner),
         Command::Secrets { action } => commands::secrets::run(action),
         Command::Status => commands::status::run(),
         Command::Completions { shell } => {
