@@ -361,6 +361,75 @@
       user-select: none;
     }
 
+    /* ── Why section ── */
+    .why-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 48px;
+    }
+
+    .why-card {
+      padding: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .why-card-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .why-card-title {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 8px;
+    }
+
+    .why-card-body {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    /* ── Comparison ── */
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 48px;
+    }
+
+    .comparison-card {
+      padding: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .comparison-card-name {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .comparison-card-body {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .comparison-card-body strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
     /* ── Backends ── */
     .backends-grid {
       display: grid;
@@ -559,6 +628,14 @@
         grid-template-columns: 1fr;
       }
 
+      .why-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .comparison-grid {
+        grid-template-columns: 1fr;
+      }
+
       .backends-grid {
         grid-template-columns: 1fr;
       }
@@ -690,6 +767,61 @@
           <h3 class="step-title">Bootstrap</h3>
           <p class="step-desc">New machine? One command clones your dotfiles repo, authenticates your password manager, and renders everything.</p>
           <div class="step-cmd"><span class="prompt">$ </span>dotf init</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why we built it -->
+  <section>
+    <div class="container fade-in">
+      <p class="section-label">Why we built it</p>
+      <h2 class="section-title">Dotfiles are solved. Secrets aren't.</h2>
+      <p class="section-sub" style="max-width:560px;">Every dotfiles manager assumes you're comfortable committing secrets to git, or makes you learn a new encryption scheme. We weren't, and we didn't want to.</p>
+
+      <div class="why-grid">
+        <div class="why-card">
+          <p class="why-card-num">01 / THE ITCH</p>
+          <h3 class="why-card-title">We kept leaking secrets.</h3>
+          <p class="why-card-body">Not maliciously — just carelessly. A new machine setup, copy-paste a <code style="font-family:var(--mono);font-size:12px;color:var(--text);background:var(--border);padding:1px 4px;border-radius:3px;">.gitconfig</code>, commit it. Email address in git history forever. API token in a public gist. It was death by a thousand small mistakes.</p>
+        </div>
+
+        <div class="why-card">
+          <p class="why-card-num">02 / THE GAP</p>
+          <h3 class="why-card-title">Existing tools made it hard.</h3>
+          <p class="why-card-body">chezmoi has secret templating, but the config format is its own language to learn. yadm encrypts whole files with GPG — great for files that are entirely secret, useless for a <code style="font-family:var(--mono);font-size:12px;color:var(--text);background:var(--border);padding:1px 4px;border-radius:3px;">.gitconfig</code> that's 95% public. We wanted something that understood the difference between a config and a secret.</p>
+        </div>
+
+        <div class="why-card">
+          <p class="why-card-num">03 / THE PRINCIPLE</p>
+          <h3 class="why-card-title">Your password manager already has the secrets.</h3>
+          <p class="why-card-body">1Password, Proton Pass, Bitwarden — you're already paying for one, already trusting it, already using it. dotf doesn't store secrets, doesn't encrypt them, doesn't manage them. It just asks your password manager at the right moment and puts the answer in the right place.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section>
+    <div class="container fade-in">
+      <p class="section-label">vs. the alternatives</p>
+      <h2 class="section-title">Good tools exist. dotf fills a specific gap.</h2>
+      <p class="section-sub" style="max-width:560px;">These are all solid projects. The question is whether their tradeoffs match yours.</p>
+
+      <div class="comparison-grid">
+        <div class="comparison-card">
+          <p class="comparison-card-name">chezmoi</p>
+          <p class="comparison-card-body">The most complete dotfiles manager out there. Templating, secret integration, cross-platform. <strong>The tradeoff:</strong> it's a system you have to learn. chezmoi-specific commands, its own source directory layout, its own template dialect. If you want something that feels like your dotfiles plus a thin layer on top, chezmoi can feel heavy.</p>
+        </div>
+
+        <div class="comparison-card">
+          <p class="comparison-card-name">yadm</p>
+          <p class="comparison-card-body">Git, but smarter — with alternates, bootstrap hooks, and GPG encryption. Elegant if your workflow is already git-native. <strong>The tradeoff:</strong> encrypted files are all-or-nothing. You can't commit a <code style="font-family:var(--mono);font-size:12px;color:var(--text);background:var(--border);padding:1px 4px;border-radius:3px;">.gitconfig</code> and encrypt only the email field. And GPG key management adds its own maintenance burden.</p>
+        </div>
+
+        <div class="comparison-card">
+          <p class="comparison-card-name">GNU stow</p>
+          <p class="comparison-card-body">Pure symlink management. Beautifully simple — a directory of packages, stow them, done. <strong>The tradeoff:</strong> zero secret handling. Your files go in git as-is. If that's fine for you, stow is probably the right answer. dotf is essentially stow with a template+secret layer bolted on and git sync built in.</p>
         </div>
       </div>
     </div>
