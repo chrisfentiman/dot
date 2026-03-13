@@ -10,7 +10,15 @@ use libfuzzer_sys::fuzz_target;
 use std::collections::HashMap;
 use tempfile::TempDir;
 
+// Set env vars once at process start — they persist across all fuzz iterations.
+static INIT: std::sync::Once = std::sync::Once::new();
+
 fuzz_target!(|data: &[u8]| {
+    INIT.call_once(|| {
+        unsafe { std::env::set_var("_FUZZ_VAL_A", "aaa"); }
+        unsafe { std::env::set_var("_FUZZ_VAL_B", "bbb"); }
+    });
+
     let Ok(template_content) = std::str::from_utf8(data) else {
         return;
     };
@@ -21,10 +29,6 @@ fuzz_target!(|data: &[u8]| {
     if std::fs::write(&tmpl_path, template_content).is_err() {
         return;
     }
-
-    // A secrets file with a few env:// placeholders so rendering has something to inject
-    unsafe { std::env::set_var("_FUZZ_VAL_A", "aaa"); }
-    unsafe { std::env::set_var("_FUZZ_VAL_B", "bbb"); }
 
     let secrets = dotf::dotfiles::SecretsFile {
         secrets: HashMap::from([
