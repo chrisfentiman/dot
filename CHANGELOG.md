@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/chrisfentiman/dot/compare/v0.6.0...v0.6.1) (2026-03-13)
+
+
+### Bug Fixes
+
+* release workflow uses correct binary name (dotf not dot) ([20261a2](https://github.com/chrisfentiman/dot/commit/20261a2691fe495c72425587369241eefb3d82c9))
+
 ## [0.6.0](https://github.com/chrisfentiman/dot/compare/v0.5.0...v0.6.0) (2026-03-13)
 
 
