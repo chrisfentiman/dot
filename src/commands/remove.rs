@@ -8,10 +8,6 @@ use crate::dotfiles;
 pub fn run(name: Option<String>) -> Result<()> {
     let mut symlinks = dotfiles::read_symlinks()?;
 
-    if symlinks.symlinks.is_empty() {
-        anyhow::bail!("No managed configs found.");
-    }
-
     let config_name = match name {
         Some(n) => {
             if !symlinks.symlinks.contains_key(&n) {
@@ -20,6 +16,9 @@ pub fn run(name: Option<String>) -> Result<()> {
             n
         }
         None => {
+            if symlinks.symlinks.is_empty() {
+                anyhow::bail!("No managed configs found.");
+            }
             let mut names: Vec<String> = symlinks.symlinks.keys().cloned().collect();
             names.sort();
             let selection = Select::with_theme(&ColorfulTheme::default())
@@ -171,7 +170,7 @@ mod tests {
         }
     }
 
-#[test]
+    #[test]
     fn remove_unknown_config_errors() {
         let env = Env::new();
         let _ = &env;
@@ -181,14 +180,22 @@ mod tests {
         std::fs::write(&path, toml::to_string_pretty(&sf).unwrap()).unwrap();
 
         let err = super::run(Some("nonexistent".into())).unwrap_err();
-        assert!(err.to_string().contains("No managed configs") || err.to_string().contains("nonexistent"));
+        assert!(
+            err.to_string().contains("nonexistent"),
+            "should name the missing config: {}",
+            err
+        );
     }
 
     #[test]
-    fn remove_errors_when_no_configs() {
+    fn remove_named_config_from_empty_errors_with_name() {
         let env = Env::new();
         let _ = &env;
         let err = super::run(Some("cfg".into())).unwrap_err();
-        assert!(err.to_string().contains("No managed configs"));
+        assert!(
+            err.to_string().contains("cfg"),
+            "should name the missing config: {}",
+            err
+        );
     }
 }
