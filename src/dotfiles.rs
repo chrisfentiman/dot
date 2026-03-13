@@ -3,7 +3,6 @@ use handlebars::Handlebars;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
 use crate::secret;
@@ -142,13 +141,28 @@ pub fn ensure_symlink(target: &Path, link: &Path) -> Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create parent dir {}", parent.display()))?;
     }
-    unix_fs::symlink(target, link).with_context(|| {
-        format!(
-            "Failed to create symlink {} -> {}",
-            link.display(),
-            target.display()
-        )
-    })
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs as unix_fs;
+        unix_fs::symlink(target, link).with_context(|| {
+            format!(
+                "Failed to create symlink {} -> {}",
+                link.display(),
+                target.display()
+            )
+        })
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs as win_fs;
+        win_fs::symlink_file(target, link).with_context(|| {
+            format!(
+                "Failed to create symlink {} -> {}",
+                link.display(),
+                target.display()
+            )
+        })
+    }
 }
 
 pub fn render_and_symlink_all() -> Result<Vec<String>> {

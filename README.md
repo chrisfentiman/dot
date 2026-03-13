@@ -5,7 +5,7 @@ Your dotfiles belong in git. Your secrets don't.
 dotf splits them: templates go in git, secret values stay in your password manager. On any machine, `dotf sync` fetches the secrets, renders the templates, and symlinks the real files into place.
 
 ```sh
-brew tap chrisfentiman/hometaps && brew install dotf
+brew tap chrisfentiman/dotf && brew install dotf
 ```
 
 ---
@@ -50,7 +50,7 @@ The secret never touches git. The mapping does — so on a new machine, `dotf in
 ## Install
 
 ```sh
-brew tap chrisfentiman/hometaps
+brew tap chrisfentiman/dotf
 brew install dotf
 ```
 

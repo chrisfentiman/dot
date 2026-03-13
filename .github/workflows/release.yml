@@ -18,9 +18,23 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: dotf-aarch64-macos
+            binary: dot
           - os: macos-latest
             target: x86_64-apple-darwin
             asset_name: dotf-x86_64-macos
+            binary: dot
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: dotf-x86_64-linux
+            binary: dot
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            asset_name: dotf-aarch64-linux
+            binary: dot
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: dotf-x86_64-windows.exe
+            binary: dot.exe
 
     steps:
       - name: Checkout
@@ -31,16 +45,37 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Set version from tag
+      - name: Install cross-compilation tools (aarch64 Linux)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Set version from tag (Unix)
+        if: runner.os != 'Windows'
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i.bak "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml && rm Cargo.toml.bak
 
+      - name: Set version from tag (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          (Get-Content Cargo.toml) -replace '^version = ".*"', "version = `"$version`"" | Set-Content Cargo.toml
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Rename binary
-        run: cp target/${{ matrix.target }}/release/dot ${{ matrix.asset_name }}
+      - name: Rename binary (Unix)
+        if: runner.os != 'Windows'
+        run: cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.asset_name }}
+
+      - name: Rename binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.asset_name }}"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
@@ -49,16 +84,16 @@ jobs:
           generate_release_notes: true
 
   update-formula:
-    name: Update hometaps formula
+    name: Update homebrew-dotf formula
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout hometaps
+      - name: Checkout homebrew-dotf
         uses: actions/checkout@v4
         with:
-          repository: chrisfentiman/homebrew-hometaps
-          token: ${{ secrets.HOMETAPS_TOKEN }}
+          repository: chrisfentiman/homebrew-dotf
+          token: ${{ secrets.DOTF_TAP_TOKEN }}
 
       - name: Compute SHA256s and update formula
         env:
@@ -67,60 +102,73 @@ jobs:
           VERSION="${TAG#v}"
           ARM_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dotf-aarch64-macos"
           X86_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dotf-x86_64-macos"
+          ARM_LINUX_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dotf-aarch64-linux"
+          X86_LINUX_URL="https://github.com/chrisfentiman/dot/releases/download/${TAG}/dotf-x86_64-linux"
 
-          # Retry until assets are available and non-empty (-L to follow redirects)
-          for i in {1..10}; do
-            ARM_SHA=$(curl -fsSL -L "$ARM_URL" | sha256sum | awk '{print $1}')
-            [ -n "$ARM_SHA" ] && [ "$ARM_SHA" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && break
-            echo "Waiting for ARM asset... ($i)"
-            sleep 15
-          done
+          # Helper: retry until asset is available and non-empty
+          fetch_sha() {
+            local url="$1" label="$2" sha=""
+            for i in {1..10}; do
+              sha=$(curl -fsSL -L "$url" | sha256sum | awk '{print $1}')
+              [ -n "$sha" ] && [ "$sha" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && echo "$sha" && return
+              echo "Waiting for $label asset... ($i)" >&2
+              sleep 15
+            done
+            echo "ERROR: Could not fetch $label after retries" >&2
+            return 1
+          }
 
-          for i in {1..10}; do
-            X86_SHA=$(curl -fsSL -L "$X86_URL" | sha256sum | awk '{print $1}')
-            [ -n "$X86_SHA" ] && [ "$X86_SHA" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ] && break
-            echo "Waiting for x86 asset... ($i)"
-            sleep 15
-          done
-
-          if [ -z "$ARM_SHA" ] || [ -z "$X86_SHA" ]; then
-            echo "ERROR: Could not fetch release assets after retries"
-            exit 1
-          fi
+          ARM_SHA=$(fetch_sha "$ARM_URL" "macOS ARM")
+          X86_SHA=$(fetch_sha "$X86_URL" "macOS x86")
+          ARM_LINUX_SHA=$(fetch_sha "$ARM_LINUX_URL" "Linux ARM")
+          X86_LINUX_SHA=$(fetch_sha "$X86_LINUX_URL" "Linux x86")
 
           echo "ARM_SHA=$ARM_SHA"
           echo "X86_SHA=$X86_SHA"
+          echo "ARM_LINUX_SHA=$ARM_LINUX_SHA"
+          echo "X86_LINUX_SHA=$X86_LINUX_SHA"
 
-          # Write formula using printf to avoid heredoc YAML conflicts
-          printf 'class Dot < Formula\n' > Formula/dot.rb
-          printf '  desc "Personal dotfiles manager with Proton Pass secret injection"\n' >> Formula/dot.rb
-          printf '  homepage "https://github.com/chrisfentiman/dot"\n' >> Formula/dot.rb
-          printf '  version "%s"\n' "${VERSION}" >> Formula/dot.rb
-          printf '  license "MIT"\n' >> Formula/dot.rb
-          printf '\n' >> Formula/dot.rb
-          printf '  on_macos do\n' >> Formula/dot.rb
-          printf '    if Hardware::CPU.arm?\n' >> Formula/dot.rb
-          printf '      url "%s"\n' "${ARM_URL}" >> Formula/dot.rb
-          printf '      sha256 "%s"\n' "${ARM_SHA}" >> Formula/dot.rb
-          printf '    elsif Hardware::CPU.intel?\n' >> Formula/dot.rb
-          printf '      url "%s"\n' "${X86_URL}" >> Formula/dot.rb
-          printf '      sha256 "%s"\n' "${X86_SHA}" >> Formula/dot.rb
-          printf '    end\n' >> Formula/dot.rb
-          printf '  end\n' >> Formula/dot.rb
-          printf '\n' >> Formula/dot.rb
-          printf '  def install\n' >> Formula/dot.rb
-          printf '    arch = Hardware::CPU.arm? ? "aarch64" : "x86_64"\n' >> Formula/dot.rb
-          printf '    chmod 0755, "dotf-#{arch}-macos"\n' >> Formula/dot.rb
-          printf '    bin.install "dotf-#{arch}-macos" => "dotf"\n' >> Formula/dot.rb
-          printf '  end\n' >> Formula/dot.rb
-          printf '\n' >> Formula/dot.rb
-          printf '  test do\n' >> Formula/dot.rb
-          printf '    assert_predicate bin/"dotf", :exist?\n' >> Formula/dot.rb
-          printf '  end\n' >> Formula/dot.rb
-          printf 'end\n' >> Formula/dot.rb
+          printf 'class Dotf < Formula\n' > Formula/dotf.rb
+          printf '  desc "Dotfiles manager with pluggable secret injection (pass, op, bw, env)"\n' >> Formula/dotf.rb
+          printf '  homepage "https://github.com/chrisfentiman/dot"\n' >> Formula/dotf.rb
+          printf '  version "%s"\n' "${VERSION}" >> Formula/dotf.rb
+          printf '  license "MIT"\n' >> Formula/dotf.rb
+          printf '\n' >> Formula/dotf.rb
+          printf '  on_macos do\n' >> Formula/dotf.rb
+          printf '    if Hardware::CPU.arm?\n' >> Formula/dotf.rb
+          printf '      url "%s"\n' "${ARM_URL}" >> Formula/dotf.rb
+          printf '      sha256 "%s"\n' "${ARM_SHA}" >> Formula/dotf.rb
+          printf '    elsif Hardware::CPU.intel?\n' >> Formula/dotf.rb
+          printf '      url "%s"\n' "${X86_URL}" >> Formula/dotf.rb
+          printf '      sha256 "%s"\n' "${X86_SHA}" >> Formula/dotf.rb
+          printf '    end\n' >> Formula/dotf.rb
+          printf '  end\n' >> Formula/dotf.rb
+          printf '\n' >> Formula/dotf.rb
+          printf '  on_linux do\n' >> Formula/dotf.rb
+          printf '    if Hardware::CPU.arm?\n' >> Formula/dotf.rb
+          printf '      url "%s"\n' "${ARM_LINUX_URL}" >> Formula/dotf.rb
+          printf '      sha256 "%s"\n' "${ARM_LINUX_SHA}" >> Formula/dotf.rb
+          printf '    elsif Hardware::CPU.intel?\n' >> Formula/dotf.rb
+          printf '      url "%s"\n' "${X86_LINUX_URL}" >> Formula/dotf.rb
+          printf '      sha256 "%s"\n' "${X86_LINUX_SHA}" >> Formula/dotf.rb
+          printf '    end\n' >> Formula/dotf.rb
+          printf '  end\n' >> Formula/dotf.rb
+          printf '\n' >> Formula/dotf.rb
+          printf '  def install\n' >> Formula/dotf.rb
+          printf '    os = OS.mac? ? "macos" : "linux"\n' >> Formula/dotf.rb
+          printf '    arch = Hardware::CPU.arm? ? "aarch64" : "x86_64"\n' >> Formula/dotf.rb
+          printf '    binary = "dotf-#{arch}-#{os}"\n' >> Formula/dotf.rb
+          printf '    chmod 0755, binary\n' >> Formula/dotf.rb
+          printf '    bin.install binary => "dotf"\n' >> Formula/dotf.rb
+          printf '  end\n' >> Formula/dotf.rb
+          printf '\n' >> Formula/dotf.rb
+          printf '  test do\n' >> Formula/dotf.rb
+          printf '    assert_predicate bin/"dotf", :exist?\n' >> Formula/dotf.rb
+          printf '  end\n' >> Formula/dotf.rb
+          printf 'end\n' >> Formula/dotf.rb
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/dot.rb
-          git commit -m "chore: update dot formula to ${VERSION}"
+          git add Formula/dotf.rb
+          git commit -m "chore: update dotf formula to ${VERSION}"
           git push

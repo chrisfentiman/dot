@@ -16,7 +16,9 @@ pub fn run() -> Result<()> {
 
     setup_dotfiles_dir()?;
     hint_secret_backends()?;
+    #[cfg(target_os = "macos")]
     run_brewfile()?;
+    #[cfg(unix)]
     install_completions()?;
 
     let synced = dotfiles::render_and_symlink_all()?;
@@ -150,13 +152,22 @@ fn hint_secret_backends() -> Result<()> {
     }
 
     if needs_pass {
+        #[cfg(target_os = "macos")]
         check_cli("pass", "Proton Pass", "brew install protonpass/pass/pass")?;
+        #[cfg(not(target_os = "macos"))]
+        check_cli("pass", "Proton Pass", "https://proton.me/pass/download")?;
     }
     if needs_op {
+        #[cfg(target_os = "macos")]
         check_cli("op", "1Password", "brew install 1password-cli")?;
+        #[cfg(not(target_os = "macos"))]
+        check_cli("op", "1Password", "https://developer.1password.com/docs/cli/get-started/")?;
     }
     if needs_bw {
+        #[cfg(target_os = "macos")]
         check_cli("bw", "Bitwarden", "brew install bitwarden-cli")?;
+        #[cfg(not(target_os = "macos"))]
+        check_cli("bw", "Bitwarden", "npm install -g @bitwarden/cli")?;
     }
 
     Ok(())
@@ -177,6 +188,7 @@ fn check_cli(bin: &str, name: &str, install_hint: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn run_brewfile() -> Result<()> {
     let brewfile = dotfiles::dotfiles_dir()?.join("Brewfile");
     if !brewfile.exists() {
@@ -200,6 +212,7 @@ fn run_brewfile() -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
 fn install_completions() -> Result<()> {
     let home = dirs::home_dir().context("Could not determine home directory")?;
     let completions_dir = home.join(".zfunc");
