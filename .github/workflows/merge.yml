@@ -3,6 +3,10 @@ name: Post-merge
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'fuzz/**'
 
 jobs:
   test:
