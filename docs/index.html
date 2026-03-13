@@ -3,35 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dotf — Dotfiles manager with first-class secret injection</title>
-  <meta name="description" content="A personal dotfiles manager written in Rust. Git-backed, template-driven, with pluggable secret injection from 1Password, Proton Pass, Bitwarden, or environment variables." />
+  <title>dotf — Dotfiles without secrets in git</title>
+  <meta name="description" content="A dotfiles manager written in Rust. Template-driven, with secret injection from 1Password, Proton Pass, Bitwarden, or environment variables." />
   <style>
-    /* ===== Reset & Base ===== */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:        #0a0a0f;
-      --surface:   #111118;
-      --surface2:  #18181f;
-      --border:    #222230;
-      --border2:   #2e2e3e;
-      --text:      #e8e8f0;
-      --muted:     #6b6b85;
-      --accent:    #7c6dfa;
-      --accent2:   #a78bfa;
-      --accent-glow: rgba(124, 109, 250, 0.15);
-      --green:     #34d399;
-      --green-dim: #064e3b;
-      --yellow:    #fbbf24;
-      --red:       #f87171;
-      --cyan:      #67e8f9;
-      --orange:    #fb923c;
-      --pink:      #f472b6;
-      --mono:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', ui-monospace, monospace;
-      --sans:      -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
-      --radius:    8px;
-      --radius-lg: 16px;
-      --shadow:    0 4px 24px rgba(0,0,0,0.4);
+      --bg: #0d0d0d;
+      --surface: #141414;
+      --border: #262626;
+      --text: #ededed;
+      --muted: #737373;
+      --accent: #6366f1;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --sans: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+      --mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
     }
 
     html { scroll-behavior: smooth; }
@@ -45,478 +33,368 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    a { color: var(--accent2); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--text); }
 
-    /* ===== Layout ===== */
+    /* ── Layout ── */
     .container {
-      max-width: 1100px;
+      max-width: 960px;
       margin: 0 auto;
       padding: 0 24px;
     }
 
-    section { padding: 100px 0; }
+    section {
+      padding: 96px 0;
+      border-top: 1px solid var(--border);
+    }
 
-    /* ===== Nav ===== */
+    section:first-of-type {
+      border-top: none;
+    }
+
+    /* ── Nav ── */
     nav {
       position: sticky;
       top: 0;
       z-index: 100;
-      background: rgba(10, 10, 15, 0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      background: rgba(13, 13, 13, 0.85);
+      backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
 
     .nav-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 56px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 60px;
     }
 
     .nav-logo {
       font-family: var(--mono);
-      font-size: 1.1rem;
-      font-weight: 700;
+      font-size: 15px;
+      font-weight: 600;
       color: var(--text);
       letter-spacing: -0.02em;
     }
 
-    .nav-logo span { color: var(--accent); }
-
-    .nav-links {
-      display: flex;
-      gap: 32px;
-      list-style: none;
+    .nav-logo span {
+      color: var(--accent);
     }
 
-    .nav-links a {
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
       color: var(--muted);
-      font-size: 0.875rem;
-      font-weight: 500;
       transition: color 0.15s;
     }
 
-    .nav-links a:hover {
-      color: var(--text);
-      text-decoration: none;
+    .nav-link:hover { color: var(--text); }
+
+    .nav-link svg {
+      width: 16px;
+      height: 16px;
     }
 
-    .nav-gh {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      border-radius: var(--radius);
-      padding: 6px 14px;
-      font-size: 0.8125rem;
-      color: var(--text) !important;
-      font-weight: 500;
-      transition: border-color 0.15s, background 0.15s;
-    }
-
-    .nav-gh:hover {
-      border-color: var(--accent);
-      background: var(--accent-glow);
-      text-decoration: none !important;
-    }
-
-    /* ===== Hero ===== */
+    /* ── Hero ── */
     .hero {
-      padding: 120px 0 80px;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
+      padding: 120px 0 96px;
+      border-top: none;
     }
 
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: -200px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 800px;
-      height: 600px;
-      background: radial-gradient(ellipse at center, rgba(124,109,250,0.12) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(124,109,250,0.1);
-      border: 1px solid rgba(124,109,250,0.3);
-      border-radius: 100px;
-      padding: 5px 14px;
-      font-size: 0.8125rem;
-      color: var(--accent2);
-      font-weight: 500;
-      margin-bottom: 28px;
-      letter-spacing: 0.01em;
-    }
-
-    .hero-badge-dot {
-      width: 6px;
-      height: 6px;
-      background: var(--green);
-      border-radius: 50%;
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    h1 {
-      font-size: clamp(2.5rem, 6vw, 4.5rem);
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      line-height: 1.05;
+    .hero-eyebrow {
+      font-size: 13px;
+      font-family: var(--mono);
+      color: var(--accent);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
       margin-bottom: 24px;
-      background: linear-gradient(135deg, #ffffff 0%, var(--accent2) 60%, var(--cyan) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+    }
+
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 60px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: var(--text);
+      margin-bottom: 20px;
     }
 
     .hero-sub {
-      font-size: clamp(1rem, 2.5vw, 1.25rem);
+      font-size: 18px;
       color: var(--muted);
-      max-width: 560px;
-      margin: 0 auto 48px;
-      line-height: 1.65;
+      max-width: 480px;
+      line-height: 1.6;
+      margin-bottom: 48px;
     }
 
-    /* ===== Terminal Window ===== */
-    .terminal {
-      background: #0d0d12;
-      border: 1px solid var(--border2);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow), 0 0 80px rgba(124,109,250,0.08);
-      overflow: hidden;
-      text-align: left;
-      max-width: 600px;
-      margin: 0 auto;
-    }
-
-    .terminal-bar {
+    .install-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 14px 16px;
-      background: #111118;
-      border-bottom: 1px solid var(--border);
+      justify-content: space-between;
+      gap: 16px;
+      max-width: 520px;
+      margin-bottom: 32px;
     }
 
-    .dot-r { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
-    .dot-y { width: 12px; height: 12px; border-radius: 50%; background: #ffbd2e; }
-    .dot-g { width: 12px; height: 12px; border-radius: 50%; background: #28c840; }
-
-    .terminal-title {
-      flex: 1;
-      text-align: center;
+    .install-box code {
       font-family: var(--mono);
-      font-size: 0.75rem;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .install-box code .prompt {
       color: var(--muted);
+      user-select: none;
     }
 
     .copy-btn {
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      border-radius: 5px;
+      flex-shrink: 0;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
       color: var(--muted);
-      cursor: pointer;
-      font-size: 0.7rem;
       font-family: var(--sans);
-      padding: 3px 10px;
-      transition: color 0.15s, border-color 0.15s;
+      font-size: 12px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
     }
 
-    .copy-btn:hover { color: var(--text); border-color: var(--accent); }
-    .copy-btn.copied { color: var(--green); border-color: var(--green); }
-
-    .terminal-body {
-      padding: 20px 24px;
-      font-family: var(--mono);
-      font-size: 0.875rem;
-      line-height: 1.8;
-    }
-
-    .cmd-prompt { color: var(--muted); }
-    .cmd-dollar { color: var(--accent); margin-right: 8px; }
-    .cmd-text { color: var(--text); }
-    .cmd-output { color: var(--muted); padding-left: 20px; }
-    .cmd-success { color: var(--green); }
-    .cmd-info { color: var(--cyan); }
-
-    /* ===== Section Headers ===== */
-    .section-label {
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
+    .copy-btn:hover {
+      border-color: var(--accent);
       color: var(--accent);
-      margin-bottom: 12px;
     }
 
-    h2 {
-      font-size: clamp(1.75rem, 4vw, 2.75rem);
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      line-height: 1.15;
+    .copy-btn.copied {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .hero-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 4px 12px;
+    }
+
+    .pill-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    /* ── Section headings ── */
+    .section-label {
+      font-size: 12px;
+      font-family: var(--mono);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
       margin-bottom: 16px;
     }
 
-    .section-desc {
+    .section-title {
+      font-size: clamp(24px, 4vw, 36px);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+
+    .section-sub {
+      font-size: 16px;
       color: var(--muted);
-      font-size: 1.0625rem;
-      max-width: 520px;
-      line-height: 1.65;
-      margin-bottom: 56px;
+      max-width: 480px;
     }
 
-    /* ===== How It Works ===== */
-    .how-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 0;
-    }
-
-    .flow-diagram {
+    /* ── Code blocks ── */
+    .code-block {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 40px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-filename {
       font-family: var(--mono);
-      font-size: 0.8125rem;
-      line-height: 1.6;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .code-tag {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: var(--mono);
+    }
+
+    .code-tag.bad {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--red);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .code-tag.good {
+      background: rgba(34, 197, 94, 0.1);
+      color: var(--green);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    .code-body {
+      padding: 20px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.7;
       overflow-x: auto;
     }
 
-    .flow-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
+    .code-body .c  { color: var(--muted); font-style: italic; }
+    .code-body .k  { color: var(--accent); }
+    .code-body .s  { color: var(--green); }
+    .code-body .ph { color: var(--yellow); }
+    .code-body .kw { color: #a78bfa; }
+
+    /* ── Problem section ── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 48px;
     }
 
-    .flow-box {
-      display: inline-flex;
+    .col-label {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 12px;
+      display: flex;
       align-items: center;
       gap: 8px;
-      border-radius: 6px;
-      padding: 8px 16px;
-      font-weight: 600;
-      white-space: nowrap;
-      font-size: 0.8rem;
     }
 
-    .flow-box.tmpl   { background: rgba(124,109,250,0.15); border: 1px solid rgba(124,109,250,0.4); color: var(--accent2); }
-    .flow-box.secret { background: rgba(251,191,36,0.1);   border: 1px solid rgba(251,191,36,0.35); color: var(--yellow); }
-    .flow-box.render { background: rgba(103,232,249,0.1);  border: 1px solid rgba(103,232,249,0.35); color: var(--cyan); }
-    .flow-box.link   { background: rgba(52,211,153,0.1);   border: 1px solid rgba(52,211,153,0.35); color: var(--green); }
-    .flow-box.home   { background: rgba(248,113,113,0.1);  border: 1px solid rgba(248,113,113,0.35); color: var(--red); }
-
-    .flow-arrow {
-      color: var(--muted);
-      font-size: 1.1rem;
-      flex-shrink: 0;
-    }
-
-    .flow-note {
-      color: var(--muted);
-      font-size: 0.75rem;
-      margin-left: 4px;
-    }
-
-    .flow-steps {
-      margin-top: 32px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    .flow-step {
-      display: flex;
-      gap: 20px;
-      align-items: flex-start;
-    }
-
-    .flow-step-num {
-      width: 28px;
-      height: 28px;
+    .col-label .dot {
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background: var(--accent-glow);
-      border: 1px solid rgba(124,109,250,0.4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--mono);
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: var(--accent2);
-      flex-shrink: 0;
-      margin-top: 2px;
     }
 
-    .flow-step-content h4 {
-      font-size: 0.9375rem;
-      font-weight: 600;
-      margin-bottom: 4px;
-      color: var(--text);
-    }
+    .dot-red { background: var(--red); }
+    .dot-green { background: var(--green); }
 
-    .flow-step-content p {
-      font-size: 0.875rem;
-      color: var(--muted);
-      line-height: 1.55;
-    }
-
-    .flow-step-content code {
-      font-family: var(--mono);
-      font-size: 0.8125rem;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 1px 6px;
-      color: var(--accent2);
-    }
-
-    /* ===== Commands ===== */
-    .commands-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .command-row {
+    /* ── Steps ── */
+    .steps {
       display: grid;
-      grid-template-columns: 260px 1fr;
-      gap: 0;
-      border-radius: var(--radius);
-      overflow: hidden;
-      transition: background 0.1s;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 56px;
     }
 
-    .command-row:hover { background: rgba(124,109,250,0.04); }
-
-    .command-cell {
-      padding: 16px 20px;
-      border: 1px solid transparent;
+    .step {
+      padding: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
     }
 
-    .command-row:hover .command-cell {
-      border-color: var(--border);
-    }
-
-    .command-row:hover .command-cell:first-child {
-      border-right-color: transparent;
-    }
-
-    .command-name {
+    .step-num {
       font-family: var(--mono);
-      font-size: 0.875rem;
+      font-size: 12px;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+
+    .step-title {
+      font-size: 16px;
       font-weight: 600;
-      color: var(--text);
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
     }
 
-    .command-name .sub { color: var(--accent2); }
-
-    .command-desc {
-      font-size: 0.875rem;
+    .step-desc {
+      font-size: 14px;
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.6;
+      margin-bottom: 20px;
     }
 
-    .command-desc strong {
-      color: var(--text);
-      font-weight: 500;
-    }
-
-    .command-tag {
-      display: inline-block;
-      font-size: 0.7rem;
+    .step-cmd {
       font-family: var(--mono);
-      background: rgba(124,109,250,0.12);
-      border: 1px solid rgba(124,109,250,0.25);
-      color: var(--accent2);
-      border-radius: 4px;
-      padding: 1px 7px;
-      margin-left: 8px;
-      vertical-align: middle;
+      font-size: 13px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: var(--text);
     }
 
-    .command-divider {
-      height: 1px;
-      background: var(--border);
-      margin: 8px 0;
-    }
-
-    .command-group-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+    .step-cmd .prompt {
       color: var(--muted);
-      padding: 20px 20px 4px;
+      user-select: none;
     }
 
-    /* ===== Backends ===== */
+    /* ── Backends ── */
     .backends-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-template-columns: repeat(2, 1fr);
       gap: 16px;
+      margin-top: 48px;
     }
 
     .backend-card {
+      padding: 24px;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 28px;
-      transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
-      position: relative;
-      overflow: hidden;
+      border-radius: 12px;
+      transition: border-color 0.15s;
     }
-
-    .backend-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 2px;
-    }
-
-    .backend-card.proton::before  { background: linear-gradient(90deg, #6d4aff, #a78bfa); }
-    .backend-card.onepass::before { background: linear-gradient(90deg, #0b68e1, #67e8f9); }
-    .backend-card.bitwarden::before { background: linear-gradient(90deg, #175ddc, #34d399); }
-    .backend-card.env::before     { background: linear-gradient(90deg, #ea580c, #fbbf24); }
 
     .backend-card:hover {
-      border-color: var(--border2);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border-color: #3a3a3a;
     }
 
     .backend-icon {
-      font-size: 1.75rem;
-      margin-bottom: 14px;
-      display: block;
+      font-size: 20px;
+      margin-bottom: 12px;
     }
 
     .backend-name {
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--text);
-      margin-bottom: 6px;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      letter-spacing: -0.01em;
     }
 
     .backend-desc {
-      font-size: 0.8125rem;
+      font-size: 14px;
       color: var(--muted);
       margin-bottom: 16px;
       line-height: 1.5;
@@ -524,992 +402,448 @@
 
     .backend-uri {
       font-family: var(--mono);
-      font-size: 0.775rem;
-      background: #0d0d12;
-      border: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--accent);
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.15);
       border-radius: 6px;
-      padding: 10px 14px;
-      color: var(--cyan);
-      word-break: break-all;
+      padding: 6px 10px;
+      display: inline-block;
     }
 
-    /* ===== Demo Terminal ===== */
-    .demo-terminal {
-      max-width: 720px;
-      margin: 0 auto;
-    }
-
-    .demo-body {
-      padding: 24px 28px;
-      font-family: var(--mono);
-      font-size: 0.8125rem;
-      line-height: 1.9;
-    }
-
-    .demo-cmd { color: var(--accent2); }
-    .demo-prompt { color: var(--muted); }
-
-    .status-table {
-      margin: 8px 0;
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .status-table th {
-      color: var(--muted);
-      text-align: left;
-      font-weight: 600;
-      font-size: 0.75rem;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      padding: 0 12px 8px 0;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .status-table td {
-      padding: 6px 12px 6px 0;
-      vertical-align: middle;
-      font-size: 0.8125rem;
-    }
-
-    .status-ok     { color: var(--green); }
-    .status-broken { color: var(--red); }
-    .status-miss   { color: var(--yellow); }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-    }
-
-    .badge.ok      { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
-    .badge.broken  { background: rgba(248,113,113,0.12); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
-    .badge.missing { background: rgba(251,191,36,0.12); color: var(--yellow); border: 1px solid rgba(251,191,36,0.25); }
-
-    /* ===== Why dotf ===== */
-    .comparison-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-    }
-
-    @media (max-width: 640px) {
-      .comparison-grid { grid-template-columns: 1fr; }
-    }
-
-    .comparison-card {
-      background: var(--surface);
+    /* ── Commands ── */
+    .commands-list {
+      margin-top: 48px;
       border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 32px;
+      border-radius: 12px;
+      overflow: hidden;
     }
 
-    .comparison-card.dotf-card {
-      border-color: rgba(124,109,250,0.35);
-      background: rgba(124,109,250,0.05);
+    .command-row {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      align-items: start;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
     }
 
-    .comparison-card h3 {
-      font-size: 1.0625rem;
-      font-weight: 700;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
+    .command-row:last-child {
+      border-bottom: none;
     }
 
-    .comparison-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
+    .command-row:hover {
+      background: var(--surface);
     }
 
-    .comparison-list li {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      font-size: 0.875rem;
+    .command-name {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text);
+      padding-top: 1px;
+    }
+
+    .command-desc {
+      font-size: 14px;
       color: var(--muted);
       line-height: 1.5;
     }
 
-    .comparison-list li .icon {
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-
-    .comparison-list li .icon.good { color: var(--green); }
-    .comparison-list li .icon.bad  { color: var(--red); }
-    .comparison-list li .icon.meh  { color: var(--yellow); }
-
-    /* ===== Code blocks ===== */
-    .code-block {
-      background: #0d0d12;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px 24px;
+    .command-desc code {
       font-family: var(--mono);
-      font-size: 0.8125rem;
-      line-height: 1.8;
-      overflow-x: auto;
+      font-size: 12px;
+      color: var(--text);
+      background: var(--border);
+      padding: 1px 5px;
+      border-radius: 3px;
     }
 
-    .code-comment { color: #444460; }
-    .code-key     { color: var(--accent2); }
-    .code-val     { color: var(--green); }
-    .code-tmpl    { color: var(--yellow); }
-    .code-section { color: var(--cyan); }
+    /* ── Install CTA ── */
+    .install-section {
+      text-align: center;
+    }
 
-    /* ===== Quickstart ===== */
-    .quickstart-steps {
+    .install-section .section-title {
+      margin-bottom: 8px;
+    }
+
+    .install-section .section-sub {
+      max-width: 360px;
+      margin: 0 auto 48px;
+    }
+
+    .install-commands {
+      max-width: 480px;
+      margin: 0 auto 32px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      max-width: 700px;
+      gap: 8px;
     }
 
-    .qs-step {
-      display: grid;
-      grid-template-columns: 36px 1fr;
-      gap: 20px;
-      align-items: start;
-    }
-
-    .qs-num {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: var(--surface2);
-      border: 1px solid var(--border2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--mono);
-      font-size: 0.8125rem;
-      font-weight: 700;
-      color: var(--accent2);
-      flex-shrink: 0;
-    }
-
-    .qs-content h4 {
-      font-size: 0.9375rem;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 8px;
-      padding-top: 7px;
-    }
-
-    .qs-content .code-block {
-      margin-top: 8px;
-    }
-
-    /* ===== Animated status demo ===== */
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
-
-    .cursor {
-      display: inline-block;
-      width: 8px;
-      height: 14px;
-      background: var(--accent2);
-      vertical-align: middle;
-      margin-left: 2px;
-      animation: blink 1.1s infinite;
-    }
-
-    .typing-line {
-      overflow: hidden;
-      white-space: nowrap;
-    }
-
-    @keyframes typeIn {
-      from { width: 0; }
-      to   { width: 100%; }
-    }
-
-    .type-1 { animation: typeIn 0.6s steps(20, end) 0.5s both; }
-    .type-2 { animation: typeIn 0.3s steps(12, end) 1.6s both; }
-
-    /* ===== Footer ===== */
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 40px 0;
-      text-align: center;
-      color: var(--muted);
-      font-size: 0.875rem;
-    }
-
-    footer a { color: var(--muted); }
-    footer a:hover { color: var(--text); }
-
-    .footer-inner {
+    .install-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 20px;
-      flex-wrap: wrap;
+      gap: 12px;
+      text-align: left;
     }
 
-    .footer-logo {
+    .install-row code {
       font-family: var(--mono);
-      font-weight: 700;
-      font-size: 1rem;
+      font-size: 13px;
       color: var(--text);
     }
 
-    .footer-logo span { color: var(--accent); }
-
-    .footer-links {
-      display: flex;
-      gap: 24px;
-      list-style: none;
+    .install-row .prompt {
+      color: var(--muted);
+      user-select: none;
     }
 
-    /* ===== Divider ===== */
-    .divider {
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--border), transparent);
-    }
-
-    /* ===== Inline code ===== */
-    code {
-      font-family: var(--mono);
-      font-size: 0.875em;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 1px 6px;
-      color: var(--accent2);
-    }
-
-    /* ===== Feature pills ===== */
-    .pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 48px;
-    }
-
-    .pill {
+    .github-link {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 100px;
-      padding: 5px 14px;
-      font-size: 0.8125rem;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--muted);
+      transition: color 0.15s;
+    }
+
+    .github-link:hover { color: var(--text); }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+    }
+
+    .footer-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-text {
+      font-size: 13px;
       color: var(--muted);
     }
 
-    .pill-dot {
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-    }
-
-    /* ===== Responsive ===== */
-    @media (max-width: 768px) {
-      section { padding: 72px 0; }
-      .nav-links { display: none; }
-      .command-row { grid-template-columns: 1fr; }
-      .command-row .command-cell:first-child { padding-bottom: 4px; }
-      .command-row .command-cell:last-child  { padding-top: 0; }
-      .flow-diagram { padding: 24px; }
-      .demo-body { padding: 18px 20px; font-size: 0.75rem; }
-      .backends-grid { grid-template-columns: 1fr; }
-    }
-
-    /* ===== Gradient underline on h2 ===== */
-    .gradient-underline {
-      display: inline-block;
-      position: relative;
-    }
-
-    .gradient-underline::after {
-      content: '';
-      position: absolute;
-      bottom: -4px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, var(--accent), var(--cyan));
-      border-radius: 2px;
-    }
-
-    /* ===== Highlight box ===== */
-    .highlight-box {
-      background: rgba(124,109,250,0.07);
-      border: 1px solid rgba(124,109,250,0.2);
-      border-radius: var(--radius-lg);
-      padding: 32px 40px;
-      margin-top: 56px;
-    }
-
-    .highlight-box h3 {
-      font-size: 1.125rem;
-      font-weight: 700;
-      margin-bottom: 8px;
-      color: var(--text);
-    }
-
-    .highlight-box p {
-      color: var(--muted);
-      font-size: 0.9375rem;
-      line-height: 1.65;
-    }
-
-    /* ===== Scroll fade animations ===== */
-    .fade-up {
+    /* ── Fade-in animation ── */
+    .fade-in {
       opacity: 0;
-      transform: translateY(24px);
-      transition: opacity 0.55s ease, transform 0.55s ease;
+      transform: translateY(20px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
     }
 
-    .fade-up.visible {
+    .fade-in.visible {
       opacity: 1;
-      transform: none;
+      transform: translateY(0);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 680px) {
+      section { padding: 64px 0; }
+      .hero { padding: 80px 0 64px; }
+
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .steps {
+        grid-template-columns: 1fr;
+      }
+
+      .backends-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .command-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+
+      .hero h1 { font-size: 32px; }
+      .hero-sub { font-size: 16px; }
     }
   </style>
 </head>
 <body>
 
-<!-- ===== Navigation ===== -->
-<nav>
-  <div class="container">
+  <!-- Nav -->
+  <nav>
     <div class="nav-inner">
-      <div class="nav-logo"><span>$</span> dotf</div>
-      <ul class="nav-links">
-        <li><a href="#how-it-works">How it works</a></li>
-        <li><a href="#commands">Commands</a></li>
-        <li><a href="#backends">Backends</a></li>
-        <li><a href="#why">Why dotf</a></li>
-        <li><a href="#quickstart">Quickstart</a></li>
-      </ul>
-      <a href="https://github.com/chrisfentiman/dot" class="nav-gh" target="_blank" rel="noopener">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+      <div class="nav-logo"><span>dotf</span></div>
+      <a href="https://github.com/chrisfentiman/dot" class="nav-link" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
         </svg>
         GitHub
       </a>
     </div>
-  </div>
-</nav>
+  </nav>
 
-<!-- ===== Hero ===== -->
-<section class="hero">
-  <div class="container">
-    <div class="hero-badge">
-      <span class="hero-badge-dot"></span>
-      Written in Rust &bull; MIT License
-    </div>
-    <h1>Your dotfiles.<br>Your secrets. Managed.</h1>
-    <p class="hero-sub">
-      A minimal dotfiles manager that turns config files into Handlebars templates,
-      injects secrets from your password manager at render time, and
-      keeps everything synced via git — without ever committing a real secret.
-    </p>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <p class="hero-eyebrow">dotfiles manager</p>
+      <h1>Your dotfiles.<br>No secrets committed.</h1>
+      <p class="hero-sub">Template your configs, inject secrets at sync time. Git tracks the templates — your password manager keeps the secrets.</p>
 
-    <!-- Install terminal -->
-    <div class="terminal" style="max-width:580px; margin: 0 auto;">
-      <div class="terminal-bar">
-        <span class="dot-r"></span>
-        <span class="dot-y"></span>
-        <span class="dot-g"></span>
-        <span class="terminal-title">terminal</span>
-        <button class="copy-btn" onclick="copyInstall(this)">copy</button>
+      <div class="install-box">
+        <code>
+          <span class="prompt">$ </span>brew tap chrisfentiman/hometaps &amp;&amp; brew install dot
+        </code>
+        <button class="copy-btn" data-copy="brew tap chrisfentiman/hometaps &amp;&amp; brew install dot">Copy</button>
       </div>
-      <div class="terminal-body">
-        <div><span class="cmd-prompt">~/</span> <span class="cmd-dollar">$</span> <span class="cmd-text">brew tap chrisfentiman/hometaps</span></div>
-        <div class="cmd-output cmd-success">✓  Tapped chrisfentiman/hometaps (14 formulas)</div>
-        <div style="margin-top:4px"><span class="cmd-prompt">~/</span> <span class="cmd-dollar">$</span> <span class="cmd-text">brew install dotf</span></div>
-        <div class="cmd-output cmd-success">✓  dotf installed</div>
-        <div style="margin-top:4px"><span class="cmd-prompt">~/</span> <span class="cmd-dollar">$</span> <span class="cmd-text">dotf init</span></div>
-        <div class="cmd-output cmd-info">  Cloning dotfiles repo…</div>
-        <div class="cmd-output cmd-info">  Running Brewfile…</div>
-        <div class="cmd-output cmd-success">✓  All done. Your machine is set up.</div>
+
+      <div class="hero-pills">
+        <span class="pill"><span class="pill-dot"></span>Written in Rust</span>
+        <span class="pill"><span class="pill-dot"></span>MIT License</span>
+        <span class="pill"><span class="pill-dot"></span>macOS</span>
+        <span class="pill"><span class="pill-dot"></span>Homebrew</span>
       </div>
     </div>
-
-    <div class="pills" style="justify-content:center; margin-top:40px; margin-bottom:0;">
-      <span class="pill"><span class="pill-dot" style="background:var(--accent)"></span>Handlebars templates</span>
-      <span class="pill"><span class="pill-dot" style="background:var(--green)"></span>Git-backed sync</span>
-      <span class="pill"><span class="pill-dot" style="background:var(--yellow)"></span>Pluggable secret backends</span>
-      <span class="pill"><span class="pill-dot" style="background:var(--cyan)"></span>Symlink management</span>
-      <span class="pill"><span class="pill-dot" style="background:var(--orange)"></span>Zero secrets committed</span>
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- ===== How It Works ===== -->
-<section id="how-it-works">
-  <div class="container">
-    <p class="section-label">Core mechanic</p>
-    <h2>From template to home directory</h2>
-    <p class="section-desc">
-      dotf sits between your git repo and your home directory. Templates live in git.
-      Secrets never do. Rendered files live on disk, gitignored, reachable via symlinks.
-    </p>
-
-    <!-- Visual flow -->
-    <div class="flow-diagram fade-up">
-      <div style="display:flex; flex-direction:column; gap:12px;">
-
-        <div class="flow-row">
-          <span class="flow-box tmpl">📄 .gitconfig.tmpl</span>
-          <span class="flow-arrow">→</span>
-          <span style="color:var(--muted); font-size:0.8rem;">lives in <code style="font-size:0.75rem; padding: 2px 6px;">~/dotfiles/configs/</code> &bull; committed to git &bull; contains <code style="font-size:0.75rem; padding: 2px 6px;">{{GIT_EMAIL}}</code></span>
-        </div>
-
-        <div class="flow-row" style="padding-left: 20px;">
-          <span style="color: var(--muted); font-size: 0.9rem; margin-right: 4px;">+</span>
-          <span class="flow-box secret">🔑 .secrets.toml</span>
-          <span class="flow-arrow">→</span>
-          <span style="color:var(--muted); font-size:0.8rem;"><code style="font-size:0.75rem; padding: 2px 6px;">GIT_EMAIL = "op://personal/github/email"</code></span>
-        </div>
-
-        <div class="flow-row" style="padding-left:12px;">
-          <span style="font-size:1.4rem; color: var(--muted); margin-right: 2px;">↓</span>
-          <span style="color: var(--muted); font-size: 0.8rem; font-style: italic;">dotf fetches secret, injects into template</span>
-        </div>
-
-        <div class="flow-row">
-          <span class="flow-box render">⚙ .gitconfig</span>
-          <span class="flow-arrow">→</span>
-          <span style="color:var(--muted); font-size:0.8rem;">rendered file in <code style="font-size:0.75rem; padding: 2px 6px;">~/dotfiles/configs/</code> &bull; <strong style="color: var(--red)">gitignored</strong> &bull; real email injected</span>
-        </div>
-
-        <div class="flow-row" style="padding-left:12px;">
-          <span style="font-size:1.4rem; color: var(--muted); margin-right: 2px;">↓</span>
-          <span style="color: var(--muted); font-size: 0.8rem; font-style: italic;">symlink created</span>
-        </div>
-
-        <div class="flow-row">
-          <span class="flow-box home">🏠 ~/.gitconfig</span>
-          <span class="flow-arrow">→</span>
-          <span style="color:var(--muted); font-size:0.8rem;">symlink pointing at rendered file &bull; your apps see a normal file</span>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- Steps -->
-    <div class="flow-steps fade-up" style="margin-top: 48px; max-width: 660px;">
-      <div class="flow-step">
-        <div class="flow-step-num">1</div>
-        <div class="flow-step-content">
-          <h4>Add a config file</h4>
-          <p>Run <code>dotf config ~/.gitconfig</code>. dotf shows the file contents and walks you through replacing sensitive values with placeholders like <code>{{GIT_EMAIL}}</code>. The template is written back to <code>~/dotfiles/configs/.gitconfig.tmpl</code>.</p>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-step-num">2</div>
-        <div class="flow-step-content">
-          <h4>Map placeholders to secrets</h4>
-          <p>dotf writes entries to <code>~/.secrets.toml</code> mapping each placeholder to a URI like <code>op://vault/item/field</code> or <code>pass://vault/item/field</code>. You choose which backend per secret.</p>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-step-num">3</div>
-        <div class="flow-step-content">
-          <h4>Render and symlink</h4>
-          <p>dotf fetches each secret from your password manager, renders the template, writes the output to <code>~/dotfiles/configs/.gitconfig</code> (gitignored), and creates a symlink at <code>~/.gitconfig</code>.</p>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-step-num">4</div>
-        <div class="flow-step-content">
-          <h4>Sync across machines</h4>
-          <p>Run <code>dotf sync</code> to pull the latest templates, re-render all configs with fresh secrets, and push any local changes. On a new machine, <code>dotf init</code> does it all from scratch.</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Example files -->
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 48px;" class="fade-up">
-      <div>
-        <p style="font-size:0.75rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin-bottom:10px;">~/dotfiles/configs/.gitconfig.tmpl</p>
-        <div class="code-block">
-<span class="code-section">[user]</span>
-  <span class="code-key">email</span> = <span class="code-tmpl">{{GIT_EMAIL}}</span>
-  <span class="code-key">name</span>  = <span class="code-val">Chris</span>
-
-<span class="code-section">[core]</span>
-  <span class="code-key">editor</span> = <span class="code-val">nvim</span>
-  <span class="code-key">pager</span>  = <span class="code-val">delta</span>
-
-<span class="code-section">[github]</span>
-  <span class="code-key">token</span> = <span class="code-tmpl">{{GITHUB_TOKEN}}</span>
-        </div>
-      </div>
-      <div>
-        <p style="font-size:0.75rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin-bottom:10px;">~/dotfiles/.secrets.toml</p>
-        <div class="code-block">
-<span class="code-comment"># Placeholder → secret URI mapping</span>
-
-<span class="code-section">[secrets]</span>
-<span class="code-key">GIT_EMAIL</span>    = <span class="code-val">"op://personal/github/email"</span>
-<span class="code-key">GITHUB_TOKEN</span> = <span class="code-val">"op://personal/github/token"</span>
-
-<span class="code-key">SSH_KEY_PASS</span> = <span class="code-val">"pass://ssh/main/passphrase"</span>
-<span class="code-key">AWS_KEY</span>      = <span class="code-val">"bw://aws-root/access-key"</span>
-
-<span class="code-key">NPM_TOKEN</span>    = <span class="code-val">"env://NPM_AUTH_TOKEN"</span>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- ===== Animated Status Demo ===== -->
-<section id="demo" style="padding: 80px 0;">
-  <div class="container">
-    <p class="section-label">Live look</p>
-    <h2>See everything at a glance</h2>
-    <p class="section-desc">
-      <code>dotf status</code> gives you an instant health check of every managed config — symlink integrity, last rendered, secret backend.
-    </p>
-
-    <div class="terminal demo-terminal fade-up">
-      <div class="terminal-bar">
-        <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
-        <span class="terminal-title">dotf status</span>
-      </div>
-      <div class="demo-body">
-        <div><span class="demo-prompt">~/</span> <span style="color:var(--accent);">$</span> <span style="color:var(--text);">dotf status</span></div>
-        <div style="margin-top:14px;">
-          <table class="status-table">
-            <thead>
-              <tr>
-                <th>NAME</th>
-                <th>TEMPLATE</th>
-                <th>SYMLINK</th>
-                <th>BACKEND</th>
-                <th>STATUS</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="color:var(--text); font-weight:600;">.gitconfig</td>
-                <td style="color:var(--muted);">.gitconfig.tmpl</td>
-                <td style="color:var(--muted);">~/.gitconfig</td>
-                <td style="color:var(--cyan);">1password</td>
-                <td><span class="badge ok">● ok</span></td>
-              </tr>
-              <tr>
-                <td style="color:var(--text); font-weight:600;">.zshrc</td>
-                <td style="color:var(--muted);">.zshrc.tmpl</td>
-                <td style="color:var(--muted);">~/.zshrc</td>
-                <td style="color:var(--cyan);">1password</td>
-                <td><span class="badge ok">● ok</span></td>
-              </tr>
-              <tr>
-                <td style="color:var(--text); font-weight:600;">config.toml</td>
-                <td style="color:var(--muted);">config.tmpl</td>
-                <td style="color:var(--muted);">~/.config/helix/config.toml</td>
-                <td style="color:var(--orange);">pass</td>
-                <td><span class="badge ok">● ok</span></td>
-              </tr>
-              <tr>
-                <td style="color:var(--text); font-weight:600;">.ssh/config</td>
-                <td style="color:var(--muted);">ssh_config.tmpl</td>
-                <td style="color:var(--muted);">~/.ssh/config</td>
-                <td style="color:var(--pink);">env</td>
-                <td><span class="badge missing">◐ missing</span></td>
-              </tr>
-              <tr>
-                <td style="color:var(--text); font-weight:600;">.npmrc</td>
-                <td style="color:var(--muted);">.npmrc.tmpl</td>
-                <td style="color:var(--muted);">~/.npmrc</td>
-                <td style="color:var(--green);">bitwarden</td>
-                <td><span class="badge broken">✕ broken</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div style="margin-top: 14px; color: var(--muted); font-size: 0.775rem;">
-          <span style="color:var(--green);">3 ok</span>  &nbsp;
-          <span style="color:var(--yellow);">1 missing</span>  &nbsp;
-          <span style="color:var(--red);">1 broken</span>
-        </div>
-        <div style="margin-top:4px; color:var(--muted); font-size:0.775rem;">
-          run <span style="color:var(--accent2);">dotf sync</span> to re-render and repair symlinks
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- ===== Commands ===== -->
-<section id="commands">
-  <div class="container">
-    <p class="section-label">Reference</p>
-    <h2>Command reference</h2>
-    <p class="section-desc">
-      All commands. No magic flags required — dotf is meant to be obvious.
-    </p>
-
-    <div class="commands-grid fade-up">
-
-      <div class="command-group-label">Setup</div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf init</div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">First-time setup on a new machine. Clones (or creates) your dotfiles repo, checks that secret backend CLIs are installed, runs your Brewfile, and installs shell completions.</div>
-        </div>
-      </div>
-
-      <div class="command-divider"></div>
-      <div class="command-group-label">Day-to-day</div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf config <span style="color:var(--muted)">&lt;path&gt;</span></div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Add a config file to be managed. Shows the file, walks you through replacing secrets with <code>{{PLACEHOLDER}}</code> tokens interactively, writes the template, and creates the symlink.</div>
-        </div>
-      </div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf modify <span style="color:var(--muted)">[name]</span></div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Opens a managed config's template in <code>$EDITOR</code>. Re-renders automatically on save so you can verify the output immediately.</div>
-        </div>
-      </div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf sync</div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc"><strong>git pull --rebase</strong> → fetch all secrets → re-render all templates → <strong>git push</strong>. The one command you run to keep everything up to date.</div>
-        </div>
-      </div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf diff <span style="color:var(--muted)">[name]</span></div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Shows a diff between the current rendered config and a fresh re-render. Useful for spotting template drift before committing.</div>
-        </div>
-      </div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf status</div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Colored table of every managed config: template path, symlink target, secret backend, and health (<strong>ok</strong> / <strong>missing</strong> / <strong>broken</strong>).</div>
-        </div>
-      </div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf remove <span style="color:var(--muted)">[name]</span></div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Stop managing a config. Optionally restores the rendered file in-place so nothing breaks after removal.</div>
-        </div>
-      </div>
-
-      <div class="command-divider"></div>
-      <div class="command-group-label">Secrets</div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf secrets list</div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">List all placeholder → URI mappings from <code>.secrets.toml</code>.</div>
-        </div>
-      </div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf secrets validate</div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Attempt to fetch every secret and report which ones fail — before a sync surprises you.</div>
-        </div>
-      </div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf secrets add</div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Interactively add a new placeholder → URI mapping.</div>
-        </div>
-      </div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf secrets remove</div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Remove a placeholder mapping. Does not delete the secret from your password manager.</div>
-        </div>
-      </div>
-
-      <div class="command-divider"></div>
-      <div class="command-group-label">Utilities</div>
-
-      <div class="command-row">
-        <div class="command-cell">
-          <div class="command-name">dotf completions <span style="color:var(--muted)">&lt;shell&gt;</span></div>
-        </div>
-        <div class="command-cell">
-          <div class="command-desc">Generate shell completions for <code>bash</code>, <code>zsh</code>, or <code>fish</code>. Run once and pipe to your completions directory.</div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- ===== Secret Backends ===== -->
-<section id="backends">
-  <div class="container">
-    <p class="section-label">Pluggable</p>
-    <h2>Secret backends</h2>
-    <p class="section-desc">
-      Each placeholder maps to a URI that tells dotf where to fetch the value. Mix and match backends — your SSH passphrase can come from Proton Pass while your AWS key comes from 1Password.
-    </p>
-
-    <div class="backends-grid fade-up">
-
-      <div class="backend-card proton">
-        <span class="backend-icon">🔒</span>
-        <div class="backend-name">Proton Pass</div>
-        <div class="backend-desc">Uses the <code>pass</code> CLI. Vaults, items, and fields map directly to the URI path.</div>
-        <div class="backend-uri">pass://vault/item/field</div>
-        <div style="margin-top:10px; font-size:0.775rem; color:var(--muted);">Example: <span style="color:var(--text);">pass://personal/github/email</span></div>
-      </div>
-
-      <div class="backend-card onepass">
-        <span class="backend-icon">🔑</span>
-        <div class="backend-name">1Password</div>
-        <div class="backend-desc">Uses the <code>op</code> CLI. Follows the native 1Password secret reference format.</div>
-        <div class="backend-uri">op://vault/item/field</div>
-        <div style="margin-top:10px; font-size:0.775rem; color:var(--muted);">Example: <span style="color:var(--text);">op://work/aws/secret-key</span></div>
-      </div>
-
-      <div class="backend-card bitwarden">
-        <span class="backend-icon">🛡️</span>
-        <div class="backend-name">Bitwarden</div>
-        <div class="backend-desc">Uses the <code>bw</code> CLI. Item name and field path form the URI.</div>
-        <div class="backend-uri">bw://item-name/field</div>
-        <div style="margin-top:10px; font-size:0.775rem; color:var(--muted);">Example: <span style="color:var(--text);">bw://github-account/password</span></div>
-      </div>
-
-      <div class="backend-card env">
-        <span class="backend-icon">⚡</span>
-        <div class="backend-name">Environment Variable</div>
-        <div class="backend-desc">Read directly from the environment. Great for CI/CD or secrets already in your shell.</div>
-        <div class="backend-uri">env://VAR_NAME</div>
-        <div style="margin-top:10px; font-size:0.775rem; color:var(--muted);">Example: <span style="color:var(--text);">env://NPM_AUTH_TOKEN</span></div>
-      </div>
-
-    </div>
-
-    <div class="highlight-box fade-up" style="margin-top: 40px;">
-      <h3>Switching password managers is painless</h3>
-      <p>All your secret URIs live in one file: <code>.secrets.toml</code>. Moving from Bitwarden to 1Password means updating URIs in that file — not hunting through dozens of shell scripts and config files. Run <code>dotf sync</code> and you're done.</p>
-    </div>
-
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- ===== Why dotf ===== -->
-<section id="why">
-  <div class="container">
-    <p class="section-label">Honest comparison</p>
-    <h2>Why dotf?</h2>
-    <p class="section-desc">
-      Existing dotfile managers are great tools. dotf is for people who want something simpler with secrets as a first-class concern.
-    </p>
-
-    <div class="comparison-grid fade-up">
-
-      <div class="comparison-card">
-        <h3>
-          <span style="color:var(--muted); font-family:var(--mono); font-size:1rem;">chezmoi / yadm / stow</span>
-        </h3>
-        <ul class="comparison-list">
-          <li><span class="icon bad">✗</span> Powerful but steep learning curve — new concepts, new file structures, new commands</li>
-          <li><span class="icon bad">✗</span> Secret management bolted on after the fact — requires chezmoi templates syntax, or external scripts</li>
-          <li><span class="icon bad">✗</span> Switching secret backends requires reworking templates across all configs</li>
-          <li><span class="icon bad">✗</span> Stow has no secret support at all — you manage that yourself</li>
-          <li><span class="icon meh">~</span> All are battle-tested with large communities — right choice for complex setups</li>
-        </ul>
-      </div>
-
-      <div class="comparison-card dotf-card">
-        <h3>
-          <span style="color:var(--accent2); font-family:var(--mono); font-size:1rem;">dotf</span>
-        </h3>
-        <ul class="comparison-list">
-          <li><span class="icon good">✓</span> Conceptual model is just: git + templates + symlinks. Nothing novel to learn</li>
-          <li><span class="icon good">✓</span> Secrets are first-class — every placeholder maps explicitly to a typed URI</li>
-          <li><span class="icon good">✓</span> Swap password managers by editing one TOML file. No templates change</li>
-          <li><span class="icon good">✓</span> <code>dotf init</code> bootstraps an entire machine in a single command</li>
-          <li><span class="icon good">✓</span> <code>dotf status</code> gives you instant visibility into symlink health</li>
-          <li><span class="icon good">✓</span> Zero config files of its own — your dotfiles repo is the config</li>
-          <li><span class="icon meh">~</span> Young project — production use at your own risk. Community contributions welcome.</li>
-        </ul>
-      </div>
-
-    </div>
-
-    <div class="highlight-box fade-up">
-      <h3>The secret injection problem</h3>
-      <p>Every dotfile manager eventually faces the same question: <em>how do you commit a config that contains an API key without committing the key?</em> Most answers involve encryption (age, GPG) — which adds key management overhead — or manual exclusion, which means secrets live unmanaged on disk. dotf's answer: never commit real values. Templates hold placeholders, secrets are fetched at render time from tools you already use.</p>
-    </div>
-
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- ===== Quickstart ===== -->
-<section id="quickstart">
-  <div class="container">
-    <p class="section-label">Get started</p>
-    <h2>Up and running in minutes</h2>
-    <p class="section-desc">
-      New machine or first time? Here's the full flow from zero to synced dotfiles.
-    </p>
-
-    <div class="quickstart-steps fade-up">
-
-      <div class="qs-step">
-        <div class="qs-num">1</div>
-        <div class="qs-content">
-          <h4>Install dotf via Homebrew</h4>
+  </section>
+
+  <!-- Problem -->
+  <section>
+    <div class="container fade-in">
+      <p class="section-label">The problem</p>
+      <h2 class="section-title">Secrets don't belong in git.</h2>
+      <p class="section-sub">But your dotfiles need them. dotf puts a template between your config and your repo.</p>
+
+      <div class="two-col">
+        <div>
+          <p class="col-label"><span class="dot dot-red"></span>The old way</p>
           <div class="code-block">
-<span style="color:var(--muted);">$</span> brew tap chrisfentiman/hometaps
-<span style="color:var(--muted);">$</span> brew install dotf
+            <div class="code-header">
+              <span class="code-filename">~/.gitconfig</span>
+              <span class="code-tag bad">committed to git</span>
+            </div>
+            <pre class="code-body">[user]
+  name  = Chris Fentiman
+  email = <span class="s">chris@example.com</span>
+  <span class="c"># ↑ real email, public forever</span>
+
+[github]
+  token = <span class="s">ghp_AbCdEfGhIjKlMnOp</span>
+  <span class="c"># ↑ leaked. rotated again.</span></pre>
+          </div>
+        </div>
+
+        <div>
+          <p class="col-label"><span class="dot dot-green"></span>The dotf way</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-filename">~/.gitconfig.tmpl</span>
+              <span class="code-tag good">safe to commit</span>
+            </div>
+            <pre class="code-body">[user]
+  name  = Chris Fentiman
+  email = <span class="ph">{{GIT_EMAIL}}</span>
+
+[github]
+  token = <span class="ph">{{GITHUB_TOKEN}}</span></pre>
+          </div>
+          <div style="margin-top:12px;" class="code-block">
+            <div class="code-header">
+              <span class="code-filename">.secrets.toml</span>
+              <span class="code-tag good">maps → password manager</span>
+            </div>
+            <pre class="code-body"><span class="ph">GIT_EMAIL</span>    = <span class="s">"pass://personal/github/email"</span>
+<span class="ph">GITHUB_TOKEN</span> = <span class="s">"op://personal/github/token"</span></pre>
           </div>
         </div>
       </div>
-
-      <div class="qs-step">
-        <div class="qs-num">2</div>
-        <div class="qs-content">
-          <h4>Initialize — first time or new machine</h4>
-          <div class="code-block">
-<span style="color:var(--muted);">$</span> dotf init
-<span style="color:var(--muted); font-style:italic;">  # clones your dotfiles repo, runs Brewfile, wires up completions</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="qs-step">
-        <div class="qs-num">3</div>
-        <div class="qs-content">
-          <h4>Add your first config file</h4>
-          <div class="code-block">
-<span style="color:var(--muted);">$</span> dotf config ~/.gitconfig
-<span style="color:var(--muted); font-style:italic;">  # interactive: highlight secrets → assign placeholders → pick backend</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="qs-step">
-        <div class="qs-num">4</div>
-        <div class="qs-content">
-          <h4>Check status and sync</h4>
-          <div class="code-block">
-<span style="color:var(--muted);">$</span> dotf status   <span style="color:var(--muted); font-style:italic;"># health check</span>
-<span style="color:var(--muted);">$</span> dotf sync     <span style="color:var(--muted); font-style:italic;"># pull → render → push</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="qs-step">
-        <div class="qs-num">5</div>
-        <div class="qs-content">
-          <h4>On every subsequent new machine</h4>
-          <div class="code-block">
-<span style="color:var(--muted);">$</span> brew tap chrisfentiman/hometaps &amp;&amp; brew install dotf &amp;&amp; dotf init
-<span style="color:var(--green); font-style:italic;"># that's literally it</span>
-          </div>
-        </div>
-      </div>
-
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ===== Footer ===== -->
-<footer>
-  <div class="container">
+  <!-- How it works -->
+  <section>
+    <div class="container fade-in">
+      <p class="section-label">How it works</p>
+      <h2 class="section-title">Three commands, any machine.</h2>
+
+      <div class="steps">
+        <div class="step">
+          <p class="step-num">01</p>
+          <h3 class="step-title">Convert</h3>
+          <p class="step-desc">Converts your config into a template, replacing secret values with named placeholders.</p>
+          <div class="step-cmd"><span class="prompt">$ </span>dotf config ~/.gitconfig</div>
+        </div>
+
+        <div class="step">
+          <p class="step-num">02</p>
+          <h3 class="step-title">Sync</h3>
+          <p class="step-desc">Fetches secrets from your password manager, renders templates, symlinks the results. Commits templates — never secrets.</p>
+          <div class="step-cmd"><span class="prompt">$ </span>dotf sync</div>
+        </div>
+
+        <div class="step">
+          <p class="step-num">03</p>
+          <h3 class="step-title">Bootstrap</h3>
+          <p class="step-desc">New machine? One command clones your dotfiles repo, authenticates your password manager, and renders everything.</p>
+          <div class="step-cmd"><span class="prompt">$ </span>dotf init</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Secret backends -->
+  <section>
+    <div class="container fade-in">
+      <p class="section-label">Secret backends</p>
+      <h2 class="section-title">Works with what you already use.</h2>
+      <p class="section-sub">Reference secrets with a simple URI. dotf fetches them at sync time.</p>
+
+      <div class="backends-grid">
+        <div class="backend-card">
+          <div class="backend-icon">🔐</div>
+          <div class="backend-name">Proton Pass</div>
+          <div class="backend-desc">Fetch from any Proton Pass vault via the CLI.</div>
+          <code class="backend-uri">pass://vault/item/field</code>
+        </div>
+
+        <div class="backend-card">
+          <div class="backend-icon">🔑</div>
+          <div class="backend-name">1Password</div>
+          <div class="backend-desc">Pull secrets from 1Password using <code style="font-family:var(--mono);font-size:12px;color:var(--text)">op</code> CLI.</div>
+          <code class="backend-uri">op://vault/item/field</code>
+        </div>
+
+        <div class="backend-card">
+          <div class="backend-icon">🛡️</div>
+          <div class="backend-name">Bitwarden</div>
+          <div class="backend-desc">Retrieve items from your Bitwarden vault.</div>
+          <code class="backend-uri">bw://item-name/field</code>
+        </div>
+
+        <div class="backend-card">
+          <div class="backend-icon">📦</div>
+          <div class="backend-name">Environment</div>
+          <div class="backend-desc">Read directly from environment variables. Great for CI.</div>
+          <code class="backend-uri">env://VAR_NAME</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Commands -->
+  <section>
+    <div class="container fade-in">
+      <p class="section-label">Commands</p>
+      <h2 class="section-title">Everything you need, nothing you don't.</h2>
+
+      <div class="commands-list">
+        <div class="command-row">
+          <span class="command-name">dotf init</span>
+          <span class="command-desc">Clone your dotfiles repo and bootstrap a new machine end-to-end.</span>
+        </div>
+        <div class="command-row">
+          <span class="command-name">dotf config &lt;path&gt;</span>
+          <span class="command-desc">Register a config file, converting it to a <code>.tmpl</code> and adding a symlink entry.</span>
+        </div>
+        <div class="command-row">
+          <span class="command-name">dotf modify &lt;path&gt;</span>
+          <span class="command-desc">Edit a template in your editor — dotf re-renders it on save.</span>
+        </div>
+        <div class="command-row">
+          <span class="command-name">dotf sync</span>
+          <span class="command-desc">Fetch secrets, render all templates, and lay down symlinks.</span>
+        </div>
+        <div class="command-row">
+          <span class="command-name">dotf diff</span>
+          <span class="command-desc">Show what would change between current state and a fresh render.</span>
+        </div>
+        <div class="command-row">
+          <span class="command-name">dotf status</span>
+          <span class="command-desc">Report which configs are managed, missing, or out of sync.</span>
+        </div>
+        <div class="command-row">
+          <span class="command-name">dotf remove &lt;path&gt;</span>
+          <span class="command-desc">Stop managing a config file and remove its symlink.</span>
+        </div>
+        <div class="command-row">
+          <span class="command-name">dotf secrets</span>
+          <span class="command-desc">Subcommands: <code>list</code>, <code>add</code>, <code>remove</code>, <code>validate</code> — manage your secret mappings.</span>
+        </div>
+        <div class="command-row">
+          <span class="command-name">dotf completions</span>
+          <span class="command-desc">Generate shell completions for bash, zsh, or fish.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install CTA -->
+  <section class="install-section">
+    <div class="container fade-in">
+      <p class="section-label">Get started</p>
+      <h2 class="section-title">Install in two commands.</h2>
+      <p class="section-sub">Requires Homebrew and a supported password manager CLI.</p>
+
+      <div class="install-commands">
+        <div class="install-row">
+          <code><span class="prompt">$ </span>brew tap chrisfentiman/hometaps</code>
+          <button class="copy-btn" data-copy="brew tap chrisfentiman/hometaps">Copy</button>
+        </div>
+        <div class="install-row">
+          <code><span class="prompt">$ </span>brew install dot</code>
+          <button class="copy-btn" data-copy="brew install dot">Copy</button>
+        </div>
+      </div>
+
+      <a href="https://github.com/chrisfentiman/dot" class="github-link" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        View on GitHub
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
     <div class="footer-inner">
-      <div class="footer-logo"><span>$</span> dotf</div>
-      <ul class="footer-links">
-        <li><a href="https://github.com/chrisfentiman/dot" target="_blank" rel="noopener">GitHub</a></li>
-        <li><a href="https://github.com/chrisfentiman/dot/issues" target="_blank" rel="noopener">Issues</a></li>
-        <li><a href="https://github.com/chrisfentiman/dot/releases" target="_blank" rel="noopener">Releases</a></li>
-        <li><a href="https://github.com/chrisfentiman/homebrew-hometaps" target="_blank" rel="noopener">Homebrew Tap</a></li>
-      </ul>
-      <span>MIT License &bull; Built with Rust</span>
+      <span class="footer-text">dotf — MIT License</span>
+      <a href="https://github.com/chrisfentiman/dot" class="footer-text" style="color:var(--muted);" target="_blank" rel="noopener">github.com/chrisfentiman/dot</a>
     </div>
-  </div>
-</footer>
+  </footer>
 
-<script>
-  // Copy install command
-  function copyInstall(btn) {
-    const text = 'brew tap chrisfentiman/hometaps && brew install dotf';
-    navigator.clipboard.writeText(text).then(() => {
-      const orig = btn.textContent;
-      btn.textContent = 'copied!';
-      btn.classList.add('copied');
-      setTimeout(() => {
-        btn.textContent = orig;
-        btn.classList.remove('copied');
-      }, 2000);
+  <script>
+    // Copy buttons
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const text = btn.dataset.copy;
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = 'Copy';
+            btn.classList.remove('copied');
+          }, 2000);
+        });
+      });
     });
-  }
 
-  // Scroll-based fade-in
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.08 });
+    // Scroll fade-in
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
 
-  document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
-</script>
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+  </script>
 
 </body>
 </html>
