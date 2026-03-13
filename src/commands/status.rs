@@ -25,19 +25,27 @@ pub(crate) fn check_config_status(
         Err(_) => ConfigStatus::MissingSymlink,
         Ok(link_path) => {
             if link_path.symlink_metadata().is_err() {
-                ConfigStatus::MissingSymlink
-            } else {
-                match fs::read_link(&link_path) {
-                    Err(_) => ConfigStatus::BrokenSymlink,
-                    Ok(dest) => {
-                        let dest_c = dest.canonicalize().unwrap_or(dest.clone());
-                        let expected_c =
-                            output_path.canonicalize().unwrap_or(output_path.to_path_buf());
-                        if dest_c == expected_c {
-                            ConfigStatus::Ok
-                        } else {
-                            ConfigStatus::WrongTarget(dest.display().to_string())
-                        }
+                return ConfigStatus::MissingSymlink;
+            }
+            match fs::read_link(&link_path) {
+                Err(_) => {
+                    // Path exists but isn't a symlink (regular file, directory, etc.)
+                    ConfigStatus::BrokenSymlink
+                }
+                Ok(dest) => {
+                    // Symlink exists — check if its target is reachable.
+                    // A dangling symlink (target deleted) has symlink_metadata() Ok
+                    // but the target path won't exist or canonicalize.
+                    if !dest.exists() && link_path.canonicalize().is_err() {
+                        return ConfigStatus::BrokenSymlink;
+                    }
+                    let dest_c = dest.canonicalize().unwrap_or(dest.clone());
+                    let expected_c =
+                        output_path.canonicalize().unwrap_or(output_path.to_path_buf());
+                    if dest_c == expected_c {
+                        ConfigStatus::Ok
+                    } else {
+                        ConfigStatus::WrongTarget(dest.display().to_string())
                     }
                 }
             }
@@ -231,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn check_status_broken_symlink() {
+    fn check_status_broken_symlink_regular_file() {
         let env = Env::new();
         let configs = env.dotfiles().join("configs");
         std::fs::write(configs.join("cfg.tmpl"), "x").unwrap();
@@ -240,6 +248,24 @@ mod tests {
         // read_link returns Err → BrokenSymlink
         let link = env._tmp.path().join("cfg");
         std::fs::write(&link, "regular").unwrap();
+
+        let status = check_config_status(
+            &configs.join("cfg.tmpl"),
+            &configs.join("cfg"),
+            &link.to_string_lossy(),
+        );
+        assert_eq!(status, ConfigStatus::BrokenSymlink);
+    }
+
+    #[test]
+    fn check_status_broken_symlink_dangling() {
+        let env = Env::new();
+        let configs = env.dotfiles().join("configs");
+        std::fs::write(configs.join("cfg.tmpl"), "x").unwrap();
+
+        // Create a symlink pointing to a nonexistent target (dangling symlink).
+        let link = env._tmp.path().join("cfg");
+        symlink("/nonexistent/path/that/does/not/exist", &link).unwrap();
 
         let status = check_config_status(
             &configs.join("cfg.tmpl"),
