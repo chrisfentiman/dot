@@ -163,3 +163,91 @@ fn remove(name: String) -> Result<()> {
     println!("{} Removed {}", "✓".green(), name.cyan());
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    struct Env {
+        _tmp: TempDir,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl Env {
+        fn new() -> Self {
+            let _lock = crate::env_lock();
+            let tmp = TempDir::new().unwrap();
+            let dotfiles = tmp.path().join("dotfiles");
+            std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
+            unsafe { std::env::set_var("HOME", tmp.path()); }
+            Env { _tmp: tmp, _lock }
+        }
+    }
+
+    impl Drop for Env {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var("HOME"); }
+        }
+    }
+
+    // ── add ──────────────────────────────────────────────────────
+    #[test]
+    fn add_inserts_new_secret() {
+        let _e = Env::new();
+        add("FOO".into(), "env://FOO".into()).unwrap();
+        let s = dotfiles::read_secrets().unwrap();
+        assert_eq!(s.secrets["FOO"], "env://FOO");
+    }
+
+    #[test]
+    fn add_overwrites_existing_secret() {
+        let _e = Env::new();
+        add("FOO".into(), "env://OLD".into()).unwrap();
+        add("FOO".into(), "env://NEW".into()).unwrap();
+        let s = dotfiles::read_secrets().unwrap();
+        assert_eq!(s.secrets["FOO"], "env://NEW");
+    }
+
+    // ── remove ───────────────────────────────────────────────────
+    #[test]
+    fn remove_deletes_existing_secret() {
+        let _e = Env::new();
+        add("BAR".into(), "env://BAR".into()).unwrap();
+        remove("BAR".into()).unwrap();
+        let s = dotfiles::read_secrets().unwrap();
+        assert!(!s.secrets.contains_key("BAR"));
+    }
+
+    #[test]
+    fn remove_errors_on_missing_secret() {
+        let _e = Env::new();
+        let err = remove("NOPE".into()).unwrap_err();
+        assert!(err.to_string().contains("NOPE"));
+    }
+
+    // ── validate ─────────────────────────────────────────────────
+    #[test]
+    fn validate_passes_when_env_secrets_present() {
+        let _e = Env::new();
+        unsafe { std::env::set_var("_DOTF_TEST_VAL", "value"); }
+        add("VAL".into(), "env://_DOTF_TEST_VAL".into()).unwrap();
+        validate().unwrap();
+        unsafe { std::env::remove_var("_DOTF_TEST_VAL"); }
+    }
+
+    #[test]
+    fn validate_fails_when_secret_missing() {
+        let _e = Env::new();
+        unsafe { std::env::remove_var("_DOTF_TEST_ABSENT"); }
+        add("ABSENT".into(), "env://_DOTF_TEST_ABSENT".into()).unwrap();
+        let err = validate().unwrap_err();
+        assert!(err.to_string().contains("failed validation"));
+    }
+
+    #[test]
+    fn validate_empty_secrets_returns_ok() {
+        let _e = Env::new();
+        validate().unwrap();
+    }
+}

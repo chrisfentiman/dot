@@ -214,12 +214,15 @@ fn run_brewfile(runner: &dyn Runner) -> Result<()> {
 
 #[cfg(unix)]
 fn install_completions(runner: &dyn Runner) -> Result<()> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
     let completions_dir = home.join(".zfunc");
     fs::create_dir_all(&completions_dir).context("Failed to create ~/.zfunc")?;
 
     let completion_file = completions_dir.join("_dotf");
-    let result = runner.run("dotf", &["completions", "zsh"], None);
+    // Use current_exe() so this works even before dotf is on PATH (e.g. first brew install).
+    let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("dotf"));
+    let exe_str = exe.to_string_lossy().into_owned();
+    let result = runner.run(&exe_str, &["completions", "zsh"], None);
 
     match result {
         Ok(out) if out.success() => {
@@ -242,4 +245,30 @@ fn install_completions(runner: &dyn Runner) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runner::MockRunner;
+    use tempfile::TempDir;
+
+    fn init_env_with_dotfiles() -> (std::sync::MutexGuard<'static, ()>, TempDir) {
+        let g = crate::env_lock();
+        let tmp = TempDir::new().unwrap();
+        let dotfiles = tmp.path().join("dotfiles");
+        std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
+        std::fs::write(dotfiles.join(".symlinks.toml"), "[symlinks]\n").unwrap();
+        std::fs::write(dotfiles.join(".secrets.toml"), "[secrets]\n").unwrap();
+        unsafe { std::env::set_var("HOME", tmp.path()); }
+        (g, tmp)
+    }
+
+    #[test]
+    fn init_dotfiles_already_exists_succeeds() {
+        let (_g, _tmp) = init_env_with_dotfiles();
+        // install_completions calls the runner; allow_unmatched avoids panic
+        let runner = MockRunner::new().allow_unmatched();
+        run(&runner).unwrap();
+    }
 }

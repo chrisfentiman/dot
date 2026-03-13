@@ -88,11 +88,7 @@ pub fn run(name: Option<String>) -> Result<()> {
                 format!(" diff: {} ", config_name).cyan().bold()
             );
 
-            // Simple line-by-line diff output
-            let old_lines: Vec<&str> = current.lines().collect();
-            let new_lines: Vec<&str> = fresh.lines().collect();
-
-            print_diff(&old_lines, &new_lines);
+            print_diff(&current, &fresh);
             println!();
         }
     }
@@ -105,21 +101,94 @@ pub fn run(name: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn print_diff(old: &[&str], new: &[&str]) {
+fn print_diff(old: &str, new: &str) {
     for line in compute_diff(old, new) {
         println!("{line}");
     }
 }
 
-/// Returns a human-readable diff of two line slices.
+/// Returns a human-readable unified-style diff of two text strings.
+/// Uses `TextDiff::from_lines` so newline termination is handled correctly.
 /// Exposed `pub` so fuzz targets and tests can call it without going through I/O.
-pub fn compute_diff(old: &[&str], new: &[&str]) -> Vec<String> {
-    let diff = TextDiff::from_slices(old, new);
+pub fn compute_diff(old: &str, new: &str) -> Vec<String> {
+    let diff = TextDiff::from_lines(old, new);
     diff.iter_all_changes()
-        .map(|change| match change.tag() {
-            ChangeTag::Equal => format!("  {}", change.value()),
-            ChangeTag::Insert => format!("+ {}", change.value()),
-            ChangeTag::Delete => format!("- {}", change.value()),
+        .map(|change| {
+            let line = change.value().trim_end_matches(['\n', '\r']);
+            match change.tag() {
+                ChangeTag::Equal => format!("  {line}"),
+                ChangeTag::Insert => format!("+ {line}"),
+                ChangeTag::Delete => format!("- {line}"),
+            }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compute_diff_equal_inputs() {
+        let result = compute_diff("a\nb\n", "a\nb\n");
+        assert!(!result.is_empty(), "equal inputs should still produce context lines");
+        for line in &result {
+            assert!(
+                line.starts_with("  "),
+                "equal input lines should be context: {line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn compute_diff_insertion() {
+        let result = compute_diff("a\n", "a\nb\n");
+        let inserts: Vec<_> = result.iter().filter(|l| l.starts_with("+ ")).collect();
+        assert_eq!(inserts.len(), 1);
+        assert_eq!(inserts[0], "+ b");
+    }
+
+    #[test]
+    fn compute_diff_deletion() {
+        let result = compute_diff("a\nb\n", "a\n");
+        let deletes: Vec<_> = result.iter().filter(|l| l.starts_with("- ")).collect();
+        assert_eq!(deletes.len(), 1);
+        assert_eq!(deletes[0], "- b");
+    }
+
+    #[test]
+    fn compute_diff_replacement() {
+        let result = compute_diff("old\n", "new\n");
+        let deletes: Vec<_> = result.iter().filter(|l| l.starts_with("- ")).collect();
+        let inserts: Vec<_> = result.iter().filter(|l| l.starts_with("+ ")).collect();
+        assert_eq!(deletes.len(), 1);
+        assert_eq!(inserts.len(), 1);
+        assert_eq!(deletes[0], "- old");
+        assert_eq!(inserts[0], "+ new");
+    }
+
+    #[test]
+    fn compute_diff_empty_inputs() {
+        let result = compute_diff("", "");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn compute_diff_all_lines_have_valid_prefix() {
+        let result = compute_diff("a\nb\nc\n", "a\nX\nc\n");
+        for line in &result {
+            assert!(
+                line.starts_with("  ") || line.starts_with("+ ") || line.starts_with("- "),
+                "invalid prefix: {line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn compute_diff_handles_crlf() {
+        let result = compute_diff("a\r\n", "a\r\n");
+        for line in &result {
+            assert!(!line.contains('\r'), "\\r should be stripped: {line:?}");
+        }
+    }
 }

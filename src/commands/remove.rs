@@ -75,40 +75,54 @@ pub fn run(name: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    // Remove symlink
-    if link_path.symlink_metadata().is_ok() {
-        fs::remove_file(&link_path)
-            .with_context(|| format!("Failed to remove symlink {}", link_path.display()))?;
-        println!("{} Removed symlink {}", "✓".green(), link_path.display());
+    // Remove symlink — handle NotFound gracefully (race between check and delete).
+    match fs::remove_file(&link_path) {
+        Ok(()) => println!("{} Removed symlink {}", "✓".green(), link_path.display()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(
+                anyhow::Error::new(e)
+                    .context(format!("Failed to remove symlink {}", link_path.display())),
+            );
+        }
     }
 
     // Optionally restore the rendered file in place of the symlink
     if restore && rendered_path.exists() {
         fs::copy(&rendered_path, &link_path)
             .with_context(|| format!("Failed to restore file to {}", link_path.display()))?;
+        // Restore user-readable permissions (rendered files are 0o600, but
+        // user-facing configs like .gitconfig should be 0o644).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&link_path, fs::Permissions::from_mode(0o644));
+        }
         println!("{} Restored file to {}", "✓".green(), link_path.display());
     }
 
     // Remove template
-    if template_path.exists() {
-        fs::remove_file(&template_path)
-            .with_context(|| format!("Failed to remove {}", template_path.display()))?;
-        println!(
-            "{} Removed template {}",
-            "✓".green(),
-            template_path.display()
-        );
+    match fs::remove_file(&template_path) {
+        Ok(()) => println!("{} Removed template {}", "✓".green(), template_path.display()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(
+                anyhow::Error::new(e)
+                    .context(format!("Failed to remove {}", template_path.display())),
+            );
+        }
     }
 
     // Remove rendered output
-    if rendered_path.exists() {
-        fs::remove_file(&rendered_path)
-            .with_context(|| format!("Failed to remove {}", rendered_path.display()))?;
-        println!(
-            "{} Removed rendered file {}",
-            "✓".green(),
-            rendered_path.display()
-        );
+    match fs::remove_file(&rendered_path) {
+        Ok(()) => println!("{} Removed rendered file {}", "✓".green(), rendered_path.display()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(
+                anyhow::Error::new(e)
+                    .context(format!("Failed to remove {}", rendered_path.display())),
+            );
+        }
     }
 
     // Remove from .symlinks.toml
@@ -123,4 +137,58 @@ pub fn run(name: Option<String>) -> Result<()> {
         config_name.cyan()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::dotfiles::SymlinksFile;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    struct Env {
+        _tmp: TempDir,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl Env {
+        fn new() -> Self {
+            let _lock = crate::env_lock();
+            let tmp = TempDir::new().unwrap();
+            let dotfiles = tmp.path().join("dotfiles");
+            std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
+            unsafe { std::env::set_var("HOME", tmp.path()); }
+            Env { _tmp: tmp, _lock }
+        }
+
+        fn dotfiles(&self) -> std::path::PathBuf {
+            self._tmp.path().join("dotfiles")
+        }
+    }
+
+    impl Drop for Env {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var("HOME"); }
+        }
+    }
+
+#[test]
+    fn remove_unknown_config_errors() {
+        let env = Env::new();
+        let _ = &env;
+        // Write an empty symlinks file
+        let sf = SymlinksFile { symlinks: HashMap::new() };
+        let path = env.dotfiles().join(".symlinks.toml");
+        std::fs::write(&path, toml::to_string_pretty(&sf).unwrap()).unwrap();
+
+        let err = super::run(Some("nonexistent".into())).unwrap_err();
+        assert!(err.to_string().contains("No managed configs") || err.to_string().contains("nonexistent"));
+    }
+
+    #[test]
+    fn remove_errors_when_no_configs() {
+        let env = Env::new();
+        let _ = &env;
+        let err = super::run(Some("cfg".into())).unwrap_err();
+        assert!(err.to_string().contains("No managed configs"));
+    }
 }

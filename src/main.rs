@@ -1,7 +1,6 @@
 use dotf::commands;
 use dotf::runner::SystemRunner;
 
-use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 
@@ -53,10 +52,10 @@ enum Command {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    let result = match cli.command {
         Command::Init => commands::init::run(&SystemRunner),
         Command::Config { path } => commands::config::run(path),
         Command::Modify { name } => commands::modify::run(&SystemRunner, name),
@@ -69,5 +68,16 @@ fn main() -> Result<()> {
             generate(shell, &mut Cli::command(), "dotf", &mut std::io::stdout());
             Ok(())
         }
+    };
+
+    if let Err(e) = result {
+        eprintln!("error: {e}");
+        // Print error chain (causes) if present.
+        let mut source = e.source();
+        while let Some(cause) = source {
+            eprintln!("  caused by: {cause}");
+            source = cause.source();
+        }
+        std::process::exit(1);
     }
 }

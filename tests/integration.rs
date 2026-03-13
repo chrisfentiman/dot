@@ -241,6 +241,22 @@ fn read_write_symlinks_roundtrip() {
 }
 
 #[test]
+fn render_and_symlink_all_rejects_outside_home() {
+    let env = TestEnv::new();
+
+    env.write_template("evil.conf", "no secrets");
+    env.write_secrets_toml(&[]);
+    // Target escapes HOME via ../..
+    env.write_symlinks_toml(&[("evil.conf", "/tmp/dotf-escape-test")]);
+
+    let err = dotf::dotfiles::render_and_symlink_all().unwrap_err();
+    assert!(
+        err.to_string().contains("outside home directory"),
+        "expected path traversal rejection, got: {err}"
+    );
+}
+
+#[test]
 fn read_secrets_returns_default_when_missing() {
     let env = TestEnv::new();
     let _ = &env;
