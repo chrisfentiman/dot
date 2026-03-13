@@ -1,19 +1,35 @@
 # dotf
 
-**Dotfiles manager with pluggable secret injection.**
+dotf manages your dotfiles as templates. Secrets become `{{PLACEHOLDERS}}` that map to your password manager — dotf fetches and injects them at sync time. Your git repo gets the templates. Your password manager keeps the values.
 
-Your configs live in git as templates. Secrets stay in your password manager. `dotf` fetches them at sync time and renders the real files — gitignored — then symlinks them into place.
+```sh
+brew tap chrisfentiman/hometaps && brew install dotf
+```
+
+---
+
+## How it works
+
+You have a `.gitconfig` with your email in it. You want it in git. You don't want your email in git.
+
+dotf solves this by splitting the file in two:
 
 ```
+# ~/dotfiles/configs/.gitconfig.tmpl  ← committed
 [user]
-  email = {{GIT_EMAIL}}   ← template, safe to commit
+  name  = Chris Fentiman
+  email = {{GIT_EMAIL}}
 ```
+
 ```toml
-# .secrets.toml
+# ~/dotfiles/.secrets.toml  ← committed
+[secrets]
 GIT_EMAIL = "op://personal/github/email"
 ```
 
-📖 **[Documentation](https://chrisfentiman.github.io/dot/)**
+When you run `dotf sync`, it fetches `op://personal/github/email` from 1Password, renders the template, and writes the real file to `~/dotfiles/configs/.gitconfig` (gitignored). `~/.gitconfig` is a symlink to that rendered file.
+
+The secret never touches git.
 
 ---
 
@@ -24,51 +40,83 @@ brew tap chrisfentiman/hometaps
 brew install dotf
 ```
 
+Or with cargo:
+
+```sh
+cargo install dotf
+```
+
+---
+
 ## Quick start
 
 ```sh
-# First time on a new machine
+# First time — clone your dotfiles repo and render everything
 dotf init
 
-# Add a config file to manage
+# Add a config file to be managed
 dotf config ~/.gitconfig
+# dotf shows the file, asks which values are secrets,
+# replaces them with {{PLACEHOLDERS}}, writes the template
 
-# Fetch secrets, render, sync to git
+# Render all templates and sync to git
 dotf sync
 ```
 
+---
+
 ## Secret backends
 
-| URI scheme | Password manager |
-|---|---|
-| `pass://vault/item/field` | Proton Pass |
-| `op://vault/item/field` | 1Password |
-| `bw://item-name/field` | Bitwarden |
-| `env://VAR_NAME` | Environment variable |
+dotf routes secrets by URI scheme. Use whichever password manager you already have.
+
+| URI | Password manager | CLI |
+|---|---|---|
+| `pass://vault/item/field` | Proton Pass | `brew install protonpass/pass/pass` |
+| `op://vault/item/field` | 1Password | `brew install 1password-cli` |
+| `bw://item-name/field` | Bitwarden | `brew install bitwarden-cli` |
+| `env://VAR_NAME` | Environment variable | — |
+
+You can mix backends in the same `.secrets.toml`.
+
+---
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `dotf init` | Bootstrap a new machine — clone repo, check CLIs, render all |
-| `dotf config <path>` | Add a config file, interactively extract secrets into placeholders |
-| `dotf modify [name]` | Open a template in `$EDITOR`, re-renders on save |
-| `dotf sync` | Pull → render → push |
-| `dotf diff [name]` | Preview what a sync would change |
-| `dotf status` | Show health of all managed configs |
-| `dotf remove [name]` | Stop managing a config, optionally restore the file |
-| `dotf secrets list\|add\|remove\|validate` | Manage secret placeholder mappings |
-| `dotf completions <shell>` | Generate shell completions (bash, zsh, fish) |
+```
+dotf init                   Clone dotfiles repo, check CLIs, render all templates
+dotf config <path>          Add a config file — interactively extract secrets
+dotf modify [name]          Edit a template in $EDITOR, re-renders on save
+dotf sync                   git pull --rebase → render → git push
+dotf diff [name]            Show what a sync would change, without writing anything
+dotf status                 Health check — which configs are ok, missing, or broken
+dotf remove [name]          Stop managing a config, optionally restore the file
+dotf secrets list           Show all placeholder → URI mappings with backend column
+dotf secrets validate       Test that every secret can actually be fetched
+dotf secrets add <n> <uri>  Add a secret mapping
+dotf secrets remove <name>  Remove a secret mapping
+dotf completions <shell>    Print shell completions (bash, zsh, fish)
+```
 
-## How it works
+---
+
+## The file layout
 
 ```
-~/.gitconfig.tmpl   ←  committed to git (no secrets)
-        ↓  dotf sync fetches secrets from your password manager
-~/dotfiles/configs/.gitconfig   ←  rendered output (gitignored)
-        ↓  symlinked
-~/.gitconfig   ←  what your tools actually read
+~/dotfiles/
+  configs/
+    .gitconfig.tmpl     ← template, committed to git
+    .gitconfig          ← rendered output, gitignored
+    .zshrc.tmpl
+    .zshrc
+  .secrets.toml         ← placeholder → URI map, committed
+  .symlinks.toml        ← name → target path map, committed
+  .gitignore            ← ignores rendered outputs
+  Brewfile              ← optional, run by dotf init
 ```
+
+`~/.gitconfig` → symlink → `~/dotfiles/configs/.gitconfig` → rendered from template at sync time.
+
+---
 
 ## License
 
