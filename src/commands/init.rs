@@ -161,7 +161,11 @@ fn hint_secret_backends() -> Result<()> {
         #[cfg(target_os = "macos")]
         check_cli("op", "1Password", "brew install 1password-cli")?;
         #[cfg(not(target_os = "macos"))]
-        check_cli("op", "1Password", "https://developer.1password.com/docs/cli/get-started/")?;
+        check_cli(
+            "op",
+            "1Password",
+            "https://developer.1password.com/docs/cli/get-started/",
+        )?;
     }
     if needs_bw {
         #[cfg(target_os = "macos")]
