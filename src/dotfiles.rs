@@ -3,18 +3,59 @@ use handlebars::Handlebars;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write as _;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 use crate::secret;
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SecretsFile {
+    #[serde(deserialize_with = "deserialize_validated_secrets", default)]
     pub secrets: HashMap<String, String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+/// Check that a name consists only of ASCII alphanumeric characters and underscores.
+/// Shared between serde validation and the interactive `config` command.
+pub fn is_valid_placeholder_name(name: &str) -> bool {
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn is_valid_secret_uri(uri: &str) -> bool {
+    uri.starts_with("pass://")
+        || uri.starts_with("op://")
+        || uri.starts_with("bw://")
+        || uri.starts_with("env://")
+}
+
+fn deserialize_validated_secrets<'de, D>(
+    deserializer: D,
+) -> std::result::Result<HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let map = HashMap::<String, String>::deserialize(deserializer)?;
+    for (key, uri) in &map {
+        if !is_valid_placeholder_name(key) {
+            return Err(serde::de::Error::custom(format!(
+                "Invalid placeholder name '{}': must be non-empty and contain only ASCII alphanumeric characters and underscores",
+                key
+            )));
+        }
+        if !is_valid_secret_uri(uri) {
+            return Err(serde::de::Error::custom(format!(
+                "Invalid secret URI '{}' for placeholder '{}': must start with pass://, op://, bw://, or env://",
+                uri, key
+            )));
+        }
+    }
+    Ok(map)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SymlinksFile {
     pub symlinks: HashMap<String, String>,
 }
@@ -47,39 +88,37 @@ pub fn symlinks_toml_path() -> Result<PathBuf> {
     Ok(dotfiles_dir()?.join(".symlinks.toml"))
 }
 
-pub fn read_secrets() -> Result<SecretsFile> {
-    let path = secrets_toml_path()?;
+fn read_toml_file<T: serde::de::DeserializeOwned + Default>(path: &Path) -> Result<T> {
     if !path.exists() {
-        return Ok(SecretsFile::default());
+        return Ok(T::default());
     }
     let content =
-        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
-    toml::from_str(&content).with_context(|| "Failed to parse .secrets.toml")
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    toml::from_str(&content)
+        .with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+pub fn read_secrets() -> Result<SecretsFile> {
+    read_toml_file(&secrets_toml_path()?)
 }
 
 pub fn write_secrets(secrets: &SecretsFile) -> Result<()> {
     let path = secrets_toml_path()?;
     let content =
-        toml::to_string_pretty(secrets).with_context(|| "Failed to serialize .secrets.toml")?;
+        toml::to_string_pretty(secrets).context("Failed to serialize .secrets.toml")?;
     atomic_write(&path, content.as_bytes(), 0o600)
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 
 pub fn read_symlinks() -> Result<SymlinksFile> {
-    let path = symlinks_toml_path()?;
-    if !path.exists() {
-        return Ok(SymlinksFile::default());
-    }
-    let content =
-        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
-    toml::from_str(&content).with_context(|| "Failed to parse .symlinks.toml")
+    read_toml_file(&symlinks_toml_path()?)
 }
 
 pub fn write_symlinks(symlinks: &SymlinksFile) -> Result<()> {
     let path = symlinks_toml_path()?;
     let content =
-        toml::to_string_pretty(symlinks).with_context(|| "Failed to serialize .symlinks.toml")?;
-    atomic_write(&path, content.as_bytes(), 0o644)
+        toml::to_string_pretty(symlinks).context("Failed to serialize .symlinks.toml")?;
+    atomic_write(&path, content.as_bytes(), 0o600)
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 
@@ -92,22 +131,48 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
         .with_context(|| format!("Failed to read template {}", template_path.display()))?;
 
     let mut hbs = Handlebars::new();
-    hbs.set_strict_mode(false);
+    // Strict mode: missing placeholder → hard error instead of silent empty string.
+    hbs.set_strict_mode(true);
     hbs.register_template_string("t", &template_content)
         .with_context(|| format!("Failed to parse template {}", template_path.display()))?;
 
-    let mut values: HashMap<String, String> = HashMap::new();
+    // Scan the template once and collect all referenced placeholder names.
+    // This is O(template_length) regardless of how many secrets are defined,
+    // instead of O(secrets × template_length) with per-secret `contains()`.
+    // Uses char-level iteration to correctly handle multi-byte UTF-8.
+    let referenced: std::collections::HashSet<&str> = {
+        let mut set = std::collections::HashSet::new();
+        let mut search_from = 0;
+        while let Some(open) = template_content[search_from..].find("{{") {
+            let start = search_from + open + 2;
+            if start >= template_content.len() {
+                break;
+            }
+            if let Some(close) = template_content[start..].find("}}") {
+                let name = template_content[start..start + close].trim();
+                if !name.is_empty() {
+                    set.insert(name);
+                }
+                search_from = start + close + 2;
+            } else {
+                break;
+            }
+        }
+        set
+    };
+
+    // Only fetch secrets that are actually referenced as Handlebars placeholders
+    // ({{NAME}}) in this template. Avoids invoking unrelated password manager CLIs
+    // when only a subset of secrets is needed.
+    let mut fetched: Vec<(String, Zeroizing<String>)> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     for (name, uri) in &secrets.secrets {
+        if !referenced.contains(name.as_str()) {
+            continue;
+        }
         match fetch_secret(uri) {
-            Ok(val) => {
-                // `val` is a `Zeroizing<String>` — clone the inner str into the map
-                // and let `val` drop (and zero) at end of this block.
-                values.insert(name.clone(), val.as_str().to_string());
-            }
-            Err(e) => {
-                failed.push(format!("{name} ({uri}): {e}"));
-            }
+            Ok(val) => fetched.push((name.clone(), val)),
+            Err(e) => failed.push(format!("{name} ({uri}): {e}")),
         }
     }
     if !failed.is_empty() {
@@ -118,9 +183,17 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
         );
     }
 
+    // Build a borrow-only map for Handlebars — no additional owned String copies.
+    let values: HashMap<&str, &str> = fetched
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+
     let rendered = hbs
         .render("t", &values)
         .with_context(|| format!("Failed to render template {}", template_path.display()))?;
+
+    // `fetched` drops here, each Zeroizing<String> zeroes on drop.
     Ok(rendered)
 }
 
@@ -135,24 +208,72 @@ pub fn atomic_write(path: &Path, data: &[u8], mode: u32) -> Result<()> {
     fs::create_dir_all(parent)
         .with_context(|| format!("Failed to create dir {}", parent.display()))?;
 
+    // Refuse to write into a world-writable directory — an attacker could race
+    // to read or swap the tempfile before rename completes.
+    #[cfg(unix)]
+    {
+        let parent_mode = parent.metadata()
+            .with_context(|| format!("Failed to stat {}", parent.display()))?
+            .permissions()
+            .mode();
+        if parent_mode & 0o002 != 0 {
+            anyhow::bail!(
+                "Refusing to write to {}: parent directory {} is world-writable (mode {:o})",
+                path.display(),
+                parent.display(),
+                parent_mode & 0o777
+            );
+        }
+    }
+
     let tmp = tempfile::Builder::new()
         .tempfile_in(parent)
         .with_context(|| format!("Failed to create tempfile in {}", parent.display()))?;
 
-    // Set permissions before writing data.
+    // Write data through the owned handle, then sync, then set permissions,
+    // then rename. This ordering ensures:
+    //   1. Data is fully written before permissions are relaxed.
+    //   2. A partial write (disk full) leaves the tempfile with no data and
+    //      restricted permissions — not a partially-written world-readable file.
+    tmp.as_file()
+        .write_all(data)
+        .with_context(|| format!("Failed to write to tempfile for {}", path.display()))?;
+    // Retry sync_all on EINTR (signal interruption during fsync).
+    loop {
+        match tmp.as_file().sync_all() {
+            Ok(()) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(anyhow!(e).context("Failed to fsync tempfile")),
+        }
+    }
     tmp.as_file()
         .set_permissions(fs::Permissions::from_mode(mode))
-        .with_context(|| "Failed to set permissions on tempfile")?;
+        .context("Failed to set permissions on tempfile")?;
 
-    fs::write(tmp.path(), data)
-        .with_context(|| format!("Failed to write to tempfile for {}", path.display()))?;
+    tmp.persist(path).map_err(|e| {
+        // EXDEV (errno 18) = cross-device rename; other errors get no extra hint.
+        let hint = if e.error.raw_os_error() == Some(18) {
+            " (tempfile and target are on different filesystems)"
+        } else {
+            ""
+        };
+        anyhow!(
+            "Failed to rename tempfile to {}: {}{}",
+            path.display(),
+            e.error,
+            hint
+        )
+    })?;
 
-    tmp.persist(path)
-        .with_context(|| format!("Failed to persist tempfile to {}", path.display()))?;
-
-    // Sync the parent directory so the rename is durable on crash.
+    // Best-effort: sync parent directory so the rename is durable on crash.
     if let Some(parent) = path.parent() {
-        std::fs::File::open(parent)?.sync_all()?;
+        match std::fs::File::open(parent).and_then(|d| d.sync_all()) {
+            Ok(()) => {}
+            Err(e) => eprintln!(
+                "warning: failed to sync directory {}: {e}",
+                parent.display()
+            ),
+        }
     }
 
     Ok(())
@@ -169,61 +290,87 @@ pub fn render_and_write(
 }
 
 pub fn ensure_symlink(target: &Path, link: &Path) -> Result<()> {
-    if link.exists() || link.symlink_metadata().is_ok() {
-        let existing = fs::read_link(link).unwrap_or_default();
-        if existing == target {
-            return Ok(());
+    // Fast path: link already points to the right place.
+    if link.symlink_metadata().is_ok() {
+        match fs::read_link(link) {
+            Ok(existing) if existing == target => return Ok(()),
+            Ok(_) => { /* stale symlink — will be replaced atomically below */ }
+            Err(_) => {
+                // Not a symlink (regular file or unreadable) — refuse to clobber.
+                anyhow::bail!(
+                    "Refusing to replace non-symlink at {} — remove it manually if intended",
+                    link.display()
+                );
+            }
         }
-        fs::remove_file(link).with_context(|| {
-            format!(
-                "Failed to remove existing file/symlink at {}",
-                link.display()
-            )
-        })?;
     }
-    if let Some(parent) = link.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create parent dir {}", parent.display()))?;
+
+    let parent = link
+        .parent()
+        .ok_or_else(|| anyhow!("Symlink path has no parent: {}", link.display()))?;
+    fs::create_dir_all(parent)
+        .with_context(|| format!("Failed to create parent dir {}", parent.display()))?;
+
+    // Clean up any orphaned temp symlinks from prior crashed runs.
+    if let Ok(entries) = fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".dotf-link-")
+            {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
     }
+
+    // Atomic symlink replacement: create a temp symlink with a unique name in
+    // the same directory, then rename over the target. We generate the name
+    // directly (instead of using tempfile + drop) to avoid a TOCTOU window
+    // where another process could claim the path between drop and symlink.
+    let tmp_path = parent.join(format!(
+        ".dotf-link-{:x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+            ^ std::process::id() as u128
+    ));
+
     #[cfg(unix)]
     {
         use std::os::unix::fs as unix_fs;
-        unix_fs::symlink(target, link).with_context(|| {
+        unix_fs::symlink(target, &tmp_path).with_context(|| {
             format!(
-                "Failed to create symlink {} -> {}",
-                link.display(),
+                "Failed to create temp symlink {} -> {}",
+                tmp_path.display(),
                 target.display()
             )
-        })
+        })?;
     }
     #[cfg(windows)]
     {
         use std::os::windows::fs as win_fs;
-        win_fs::symlink_file(target, link).with_context(|| {
+        win_fs::symlink_file(target, &tmp_path).with_context(|| {
             format!(
-                "Failed to create symlink {} -> {}",
-                link.display(),
+                "Failed to create temp symlink {} -> {}\n  \
+                 On Windows, symlinks require Developer Mode enabled or elevated privileges.\n  \
+                 Settings → Update & Security → For Developers → Developer Mode",
+                tmp_path.display(),
                 target.display()
             )
-        })
+        })?;
     }
-}
 
-/// Exposed for testing only — splits bw URI into (item, subcommand).
-#[cfg(test)]
-pub fn _bw_parse(path: &str) -> (&str, &str) {
-    match path.rsplit_once('/') {
-        Some((item, field)) => {
-            let sub = match field {
-                "username" => "username",
-                "notes" => "notes",
-                "uri" => "uri",
-                _ => "password",
-            };
-            (item, sub)
-        }
-        None => (path, "password"),
-    }
+    fs::rename(&tmp_path, link).with_context(|| {
+        // Clean up the temp symlink on rename failure.
+        let _ = fs::remove_file(&tmp_path);
+        format!(
+            "Failed to rename temp symlink to {} -> {}",
+            link.display(),
+            target.display()
+        )
+    })
 }
 
 pub fn render_and_symlink_all() -> Result<Vec<String>> {
@@ -243,8 +390,27 @@ pub fn render_and_symlink_all() -> Result<Vec<String>> {
             continue;
         }
 
-        // Validate the symlink destination stays inside HOME.
-        if !link_path.starts_with(&home) {
+        // Validate the symlink destination stays inside HOME after resolving
+        // any `..` segments. Without canonicalization, `~/../../etc/passwd` would
+        // pass `starts_with(HOME)` while actually escaping it.
+        let canonical_link = link_path.canonicalize().unwrap_or_else(|_| {
+            // If the file doesn't exist yet, canonicalize the parent and append
+            // the filename. Reject filenames containing `..` to prevent bypass.
+            let file_name = link_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            if file_name.contains("..") {
+                return link_path.clone(); // will fail the starts_with check
+            }
+            link_path
+                .parent()
+                .and_then(|p| p.canonicalize().ok())
+                .map(|p| p.join(file_name.as_ref()))
+                .unwrap_or_else(|| link_path.clone())
+        });
+        let canonical_home = home.canonicalize().unwrap_or_else(|_| home.clone());
+        if !canonical_link.starts_with(&canonical_home) {
             anyhow::bail!(
                 "Refusing to symlink {name}: destination {} is outside home directory",
                 link_path.display()
@@ -278,18 +444,21 @@ mod tests {
 
     #[test]
     fn expand_tilde_tilde_only() {
+        let _g = crate::env_lock();
         let p = expand_tilde("~").unwrap();
         assert_eq!(p, dirs::home_dir().unwrap());
     }
 
     #[test]
     fn expand_tilde_tilde_slash() {
+        let _g = crate::env_lock();
         let p = expand_tilde("~/.gitconfig").unwrap();
         assert_eq!(p, dirs::home_dir().unwrap().join(".gitconfig"));
     }
 
     #[test]
     fn expand_tilde_nested_path() {
+        let _g = crate::env_lock();
         let p = expand_tilde("~/.config/mise/config.toml").unwrap();
         assert_eq!(
             p,
@@ -336,15 +505,19 @@ mod tests {
     }
 
     #[test]
-    fn render_template_unknown_placeholder_renders_empty() {
-        // handlebars in non-strict mode renders missing keys as empty string
+    fn render_template_unknown_placeholder_errors_in_strict_mode() {
+        // strict mode: referencing a placeholder not in secrets is a hard error
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "name = {{MISSING}}").unwrap();
 
         let secrets = SecretsFile::default();
-        let rendered = render_template(&tmpl, &secrets).unwrap();
-        assert_eq!(rendered, "name = ");
+        let err = render_template(&tmpl, &secrets).unwrap_err();
+        let chain = format!("{err:?}");
+        assert!(
+            chain.contains("MISSING") || chain.contains("strict"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
@@ -378,6 +551,58 @@ mod tests {
         }
     }
 
+    #[test]
+    fn render_template_partial_secret_failure_reports_all() {
+        // One secret resolves, one doesn't — error should mention the failed one.
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        fs::write(&tmpl, "a = {{GOOD}}\nb = {{BAD}}").unwrap();
+
+        unsafe {
+            std::env::set_var("_DOTF_T_PARTIAL", "ok");
+        }
+        let secrets = SecretsFile {
+            secrets: HashMap::from([
+                ("GOOD".to_string(), "env://_DOTF_T_PARTIAL".to_string()),
+                ("BAD".to_string(), "env://_DOTF_NONEXISTENT_XYZ".to_string()),
+            ]),
+        };
+
+        let err = render_template(&tmpl, &secrets).unwrap_err();
+        assert!(err.to_string().contains("BAD"), "error should name the failed secret");
+        assert!(err.to_string().contains("1 secret(s)"));
+
+        unsafe {
+            std::env::remove_var("_DOTF_T_PARTIAL");
+        }
+    }
+
+    #[test]
+    fn render_template_skips_unreferenced_secrets() {
+        // Secret not referenced in template should not be fetched at all.
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        fs::write(&tmpl, "key = {{USED}}").unwrap();
+
+        unsafe {
+            std::env::set_var("_DOTF_T_USED", "value");
+        }
+        // UNUSED references a missing env var — would fail if fetched.
+        let secrets = SecretsFile {
+            secrets: HashMap::from([
+                ("USED".to_string(), "env://_DOTF_T_USED".to_string()),
+                ("UNUSED".to_string(), "env://_DOTF_NONEXISTENT_ABC".to_string()),
+            ]),
+        };
+
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "key = value");
+
+        unsafe {
+            std::env::remove_var("_DOTF_T_USED");
+        }
+    }
+
     // ── ensure_symlink ───────────────────────────────────────────
     #[cfg(unix)]
     #[test]
@@ -396,14 +621,23 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn ensure_symlink_noop_if_already_correct() {
+        use std::os::unix::fs::MetadataExt;
+
         let tmp = TempDir::new().unwrap();
         let target = tmp.path().join("rendered.conf");
         let link = tmp.path().join("link.conf");
 
         fs::write(&target, "contents").unwrap();
         ensure_symlink(&target, &link).unwrap();
-        // Call again — should not error
+
+        // Record the inode of the symlink itself.
+        let ino_before = link.symlink_metadata().unwrap().ino();
+
+        // Call again — should be a true noop (no recreate).
         ensure_symlink(&target, &link).unwrap();
+
+        let ino_after = link.symlink_metadata().unwrap().ino();
+        assert_eq!(ino_before, ino_after, "symlink should not be recreated");
         assert_eq!(fs::read_link(&link).unwrap(), target);
     }
 
@@ -437,6 +671,20 @@ mod tests {
         assert!(link.symlink_metadata().is_ok());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn ensure_symlink_refuses_regular_file() {
+        let tmp = TempDir::new().unwrap();
+        let target = tmp.path().join("rendered.conf");
+        let link = tmp.path().join("existing.conf");
+
+        fs::write(&target, "contents").unwrap();
+        fs::write(&link, "regular file").unwrap(); // regular file, not a symlink
+
+        let err = ensure_symlink(&target, &link).unwrap_err();
+        assert!(err.to_string().contains("non-symlink"));
+    }
+
     // ── render_and_write ─────────────────────────────────────────
     #[test]
     fn render_and_write_creates_output_file() {
@@ -458,5 +706,301 @@ mod tests {
         unsafe {
             std::env::remove_var("_DOTF_T_HOST");
         }
+    }
+
+    // ── corrupted TOML ──────────────────────────────────────────
+    #[test]
+    fn read_secrets_corrupted_toml_errors() {
+        let _g = crate::env_lock();
+        let tmp = TempDir::new().unwrap();
+        unsafe { std::env::set_var("HOME", tmp.path()); }
+        let dotfiles = tmp.path().join("dotfiles");
+        fs::create_dir_all(dotfiles.join("configs")).unwrap();
+        fs::write(dotfiles.join(".secrets.toml"), "{{invalid toml!!!").unwrap();
+        let err = read_secrets().unwrap_err();
+        assert!(
+            err.to_string().contains("parse") || err.to_string().contains("TOML"),
+            "unexpected: {err}"
+        );
+        unsafe { std::env::remove_var("HOME"); }
+    }
+
+    #[test]
+    fn read_symlinks_corrupted_toml_errors() {
+        let _g = crate::env_lock();
+        let tmp = TempDir::new().unwrap();
+        unsafe { std::env::set_var("HOME", tmp.path()); }
+        let dotfiles = tmp.path().join("dotfiles");
+        fs::create_dir_all(dotfiles.join("configs")).unwrap();
+        fs::write(dotfiles.join(".symlinks.toml"), "not valid toml [[[").unwrap();
+        let err = read_symlinks().unwrap_err();
+        assert!(
+            err.to_string().contains("parse") || err.to_string().contains("TOML"),
+            "unexpected: {err}"
+        );
+        unsafe { std::env::remove_var("HOME"); }
+    }
+
+    #[test]
+    fn read_secrets_unknown_field_rejected() {
+        let _g = crate::env_lock();
+        let tmp = TempDir::new().unwrap();
+        unsafe { std::env::set_var("HOME", tmp.path()); }
+        let dotfiles = tmp.path().join("dotfiles");
+        fs::create_dir_all(dotfiles.join("configs")).unwrap();
+        fs::write(
+            dotfiles.join(".secrets.toml"),
+            "[secrets]\nFOO = \"env://FOO\"\n\n[extra]\nBAD = true\n",
+        )
+        .unwrap();
+        let err = read_secrets().unwrap_err();
+        let chain = format!("{err:?}");
+        assert!(
+            chain.contains("unknown") || chain.contains("extra"),
+            "deny_unknown_fields should reject: {chain}"
+        );
+        unsafe { std::env::remove_var("HOME"); }
+    }
+
+    // ── atomic_write permission denied ──────────────────────────
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_to_readonly_dir_fails() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("readonly");
+        fs::create_dir_all(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+
+        let err = atomic_write(&dir.join("file.txt"), b"data", 0o644).unwrap_err();
+        // Restore permissions so TempDir cleanup works.
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            err.to_string().contains("tempfile") || err.to_string().contains("Permission"),
+            "unexpected: {err}"
+        );
+    }
+
+    // ── orphaned temp symlink cleanup ───────────────────────────
+    #[cfg(unix)]
+    #[test]
+    fn ensure_symlink_cleans_orphaned_temps() {
+        let tmp = TempDir::new().unwrap();
+        let target = tmp.path().join("rendered.conf");
+        fs::write(&target, "contents").unwrap();
+
+        // Simulate an orphaned temp symlink from a prior crashed run.
+        let orphan = tmp.path().join(".dotf-link-deadbeef");
+        std::os::unix::fs::symlink("/nonexistent", &orphan).unwrap();
+        assert!(orphan.symlink_metadata().is_ok());
+
+        let link = tmp.path().join("mylink.conf");
+        ensure_symlink(&target, &link).unwrap();
+
+        // Orphan should be cleaned up.
+        assert!(
+            orphan.symlink_metadata().is_err(),
+            "orphaned temp symlink should have been removed"
+        );
+        // Actual link should work.
+        assert_eq!(fs::read_link(&link).unwrap(), target);
+    }
+
+    // ── placeholder name validation at parse time ────────────────
+    #[test]
+    fn secrets_file_rejects_invalid_placeholder_names() {
+        let toml_str = "[secrets]\n\"invalid-name\" = \"env://FOO\"\n";
+        let err: std::result::Result<SecretsFile, _> = toml::from_str(toml_str);
+        assert!(err.is_err(), "hyphen in placeholder name should be rejected");
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("invalid-name") || msg.contains("Invalid placeholder"));
+    }
+
+    #[test]
+    fn secrets_file_rejects_empty_placeholder_name() {
+        let toml_str = "[secrets]\n\"\" = \"env://FOO\"\n";
+        let err: std::result::Result<SecretsFile, _> = toml::from_str(toml_str);
+        assert!(err.is_err(), "empty placeholder name should be rejected");
+    }
+
+    #[test]
+    fn secrets_file_accepts_valid_placeholder_names() {
+        let toml_str = "[secrets]\nFOO_BAR = \"env://FOO\"\nX123 = \"env://X\"\n";
+        let result: std::result::Result<SecretsFile, _> = toml::from_str(toml_str);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn secrets_file_rejects_invalid_uri_scheme() {
+        let toml_str = "[secrets]\nMY_KEY = \"https://example.com/secret\"\n";
+        let result: std::result::Result<SecretsFile, _> = toml::from_str(toml_str);
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Invalid secret URI"),
+            "should reject invalid URI scheme: {msg}"
+        );
+    }
+
+    #[test]
+    fn secrets_file_rejects_empty_uri() {
+        let toml_str = "[secrets]\nMY_KEY = \"\"\n";
+        let result: std::result::Result<SecretsFile, _> = toml::from_str(toml_str);
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Invalid secret URI"),
+            "should reject empty URI: {msg}"
+        );
+    }
+
+    // ── Handlebars safety ───────────────────────────────────────
+    #[test]
+    fn handlebars_rejects_unknown_helpers() {
+        // Verify that our Handlebars instance does not allow arbitrary helper
+        // invocation (e.g. {{env "SECRET"}}) — only plain {{PLACEHOLDER}} works.
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        fs::write(&tmpl, "{{dangerous_helper 'arg'}}").unwrap();
+
+        let secrets = SecretsFile::default();
+        let err = render_template(&tmpl, &secrets).unwrap_err();
+        let chain = format!("{err:?}");
+        assert!(
+            chain.contains("dangerous_helper") || chain.contains("not defined"),
+            "unknown helpers should fail: {chain}"
+        );
+    }
+
+    // ── placeholder scanning ────────────────────────────────────
+    #[test]
+    fn render_template_handles_adjacent_placeholders() {
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        fs::write(&tmpl, "{{A}}{{B}}").unwrap();
+
+        unsafe {
+            std::env::set_var("_DOTF_T_ADJ_A", "hello");
+            std::env::set_var("_DOTF_T_ADJ_B", "world");
+        }
+        let secrets = SecretsFile {
+            secrets: HashMap::from([
+                ("A".to_string(), "env://_DOTF_T_ADJ_A".to_string()),
+                ("B".to_string(), "env://_DOTF_T_ADJ_B".to_string()),
+            ]),
+        };
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "helloworld");
+        unsafe {
+            std::env::remove_var("_DOTF_T_ADJ_A");
+            std::env::remove_var("_DOTF_T_ADJ_B");
+        }
+    }
+
+    #[test]
+    fn render_template_handles_unicode_around_placeholders() {
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        // Multi-byte UTF-8 characters around placeholders
+        fs::write(&tmpl, "emoji 👍 {{VAL}} done 🎉").unwrap();
+
+        unsafe { std::env::set_var("_DOTF_T_UNI", "ok"); }
+        let secrets = SecretsFile {
+            secrets: HashMap::from([("VAL".to_string(), "env://_DOTF_T_UNI".to_string())]),
+        };
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "emoji 👍 ok done 🎉");
+        unsafe { std::env::remove_var("_DOTF_T_UNI"); }
+    }
+
+    #[test]
+    fn render_template_handles_unclosed_braces() {
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        // Unclosed {{ should not panic or infinite loop
+        fs::write(&tmpl, "prefix {{UNCLOSED no closing").unwrap();
+
+        let secrets = SecretsFile::default();
+        // This will fail at Handlebars parse time (strict mode), which is fine
+        let result = render_template(&tmpl, &secrets);
+        // We just care that it doesn't panic — error is acceptable
+        let _ = result;
+    }
+
+    #[test]
+    fn render_template_three_sequential_placeholders() {
+        // Three adjacent placeholders — verifies scanner advances correctly
+        // past each one. A broken search_from offset would miss the third.
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        fs::write(&tmpl, "{{A}}{{B}}{{C}}").unwrap();
+
+        unsafe {
+            std::env::set_var("_DOTF_T_3A", "1");
+            std::env::set_var("_DOTF_T_3B", "2");
+            std::env::set_var("_DOTF_T_3C", "3");
+        }
+        let secrets = SecretsFile {
+            secrets: HashMap::from([
+                ("A".to_string(), "env://_DOTF_T_3A".to_string()),
+                ("B".to_string(), "env://_DOTF_T_3B".to_string()),
+                ("C".to_string(), "env://_DOTF_T_3C".to_string()),
+                // Poison: would fail if fetched
+                ("UNUSED".to_string(), "env://_DOTF_NONEXISTENT_3".to_string()),
+            ]),
+        };
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "123");
+        unsafe {
+            std::env::remove_var("_DOTF_T_3A");
+            std::env::remove_var("_DOTF_T_3B");
+            std::env::remove_var("_DOTF_T_3C");
+        }
+    }
+
+    #[test]
+    fn render_template_placeholder_scanning_precise_offset() {
+        // Verify that after scanning {{X}}, the scanner starts AFTER the closing }},
+        // not before it. Template: "{{X}}{{Y}}" — if scanner retreats, Y might be missed.
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        // Y is required — if scanner misses it, Handlebars will error
+        fs::write(&tmpl, "{{X}}{{Y}}").unwrap();
+
+        unsafe {
+            std::env::set_var("_DOTF_T_OX", "a");
+            std::env::set_var("_DOTF_T_OY", "b");
+        }
+        let secrets = SecretsFile {
+            secrets: HashMap::from([
+                ("X".to_string(), "env://_DOTF_T_OX".to_string()),
+                ("Y".to_string(), "env://_DOTF_T_OY".to_string()),
+            ]),
+        };
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "ab");
+        unsafe {
+            std::env::remove_var("_DOTF_T_OX");
+            std::env::remove_var("_DOTF_T_OY");
+        }
+    }
+
+    // ── world-writable directory check ─────────────────────────
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_rejects_world_writable_parent() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("world_writable");
+        fs::create_dir_all(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o777)).unwrap();
+
+        let err = atomic_write(&dir.join("file.txt"), b"data", 0o600).unwrap_err();
+        // Restore permissions for cleanup.
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            err.to_string().contains("world-writable"),
+            "should reject world-writable dir: {err}"
+        );
     }
 }

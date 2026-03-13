@@ -61,6 +61,13 @@ pub fn run(path: Option<String>) -> Result<()> {
 
         let placeholder: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Placeholder name (e.g. GITHUB_EMAIL)")
+            .validate_with(|input: &String| -> std::result::Result<(), &str> {
+                if dotfiles::is_valid_placeholder_name(input) {
+                    Ok(())
+                } else {
+                    Err("Placeholder name must be non-empty and contain only letters, digits, and underscores")
+                }
+            })
             .interact_text()
             .context("Failed to read placeholder name")?;
 
