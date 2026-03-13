@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/chrisfentiman/dot/compare/v0.8.0...v0.8.1) (2026-03-13)
+
+
+### Bug Fixes
+
+* correct upload-pages-artifact action name in pages workflow ([8d02679](https://github.com/chrisfentiman/dot/commit/8d02679d074cb9e1e5b57adbd23d05f3a137261c))
+
 ## [0.8.0](https://github.com/chrisfentiman/dot/compare/v0.7.0...v0.8.0) (2026-03-13)
 
 
