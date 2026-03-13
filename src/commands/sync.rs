@@ -48,22 +48,25 @@ pub fn run(runner: &dyn Runner) -> Result<()> {
     let now = chrono::Local::now().format("%Y-%m-%d").to_string();
     let commit_msg = format!("chore: sync {now}");
 
-    // Stage modified tracked files AND explicitly named paths for new .tmpl files,
-    // .symlinks.toml, and .secrets.toml that `git add --update` would silently skip.
-    let add = runner
+    // Stage all modified tracked files first (covers edits to existing templates,
+    // .symlinks.toml, .secrets.toml, etc.).
+    let update = runner
+        .run("git", &["add", "--update"], Some(&dotfiles_dir))
+        .context("Failed to run git add --update")?;
+    if !update.success() {
+        anyhow::bail!("git add --update failed");
+    }
+
+    // Explicitly stage paths that --update skips (new/untracked files).
+    // Git interprets pathspecs itself (no shell glob expansion needed).
+    let add_new = runner
         .run(
             "git",
-            &[
-                "add",
-                "--update",
-                "configs/*.tmpl",
-                ".symlinks.toml",
-                ".secrets.toml",
-            ],
+            &["add", "configs/", ".symlinks.toml", ".secrets.toml"],
             Some(&dotfiles_dir),
         )
-        .context("Failed to run git add")?;
-    if !add.success() {
+        .context("Failed to run git add for new files")?;
+    if !add_new.success() {
         anyhow::bail!("git add failed");
     }
 
@@ -160,9 +163,10 @@ mod tests {
         let msg = today_commit_msg();
         let runner = MockRunner::new()
             .on("git", &["pull", "--rebase"], "Already up to date.\n", true)
+            .on("git", &["add", "--update"], "", true)
             .on(
                 "git",
-                &["add", "--update", "configs/*.tmpl", ".symlinks.toml", ".secrets.toml"],
+                &["add", "configs/", ".symlinks.toml", ".secrets.toml"],
                 "",
                 true,
             )
@@ -177,9 +181,10 @@ mod tests {
         let msg = today_commit_msg();
         let runner = MockRunner::new()
             .on("git", &["pull", "--rebase"], "", true)
+            .on("git", &["add", "--update"], "", true)
             .on(
                 "git",
-                &["add", "--update", "configs/*.tmpl", ".symlinks.toml", ".secrets.toml"],
+                &["add", "configs/", ".symlinks.toml", ".secrets.toml"],
                 "",
                 true,
             )
@@ -188,13 +193,24 @@ mod tests {
     }
 
     #[test]
-    fn sync_git_add_failure_bails() {
+    fn sync_git_add_update_failure_bails() {
         let (_g, _tmp) = sync_env();
         let runner = MockRunner::new()
             .on("git", &["pull", "--rebase"], "", true)
+            .on("git", &["add", "--update"], "", false);
+        let err = run(&runner).unwrap_err();
+        assert!(err.to_string().contains("git add"));
+    }
+
+    #[test]
+    fn sync_git_add_new_failure_bails() {
+        let (_g, _tmp) = sync_env();
+        let runner = MockRunner::new()
+            .on("git", &["pull", "--rebase"], "", true)
+            .on("git", &["add", "--update"], "", true)
             .on(
                 "git",
-                &["add", "--update", "configs/*.tmpl", ".symlinks.toml", ".secrets.toml"],
+                &["add", "configs/", ".symlinks.toml", ".secrets.toml"],
                 "",
                 false,
             );
@@ -208,9 +224,10 @@ mod tests {
         let msg = today_commit_msg();
         let runner = MockRunner::new()
             .on("git", &["pull", "--rebase"], "", true)
+            .on("git", &["add", "--update"], "", true)
             .on(
                 "git",
-                &["add", "--update", "configs/*.tmpl", ".symlinks.toml", ".secrets.toml"],
+                &["add", "configs/", ".symlinks.toml", ".secrets.toml"],
                 "",
                 true,
             )
@@ -226,9 +243,10 @@ mod tests {
         let msg = today_commit_msg();
         let runner = MockRunner::new()
             .on("git", &["pull", "--rebase"], "", true)
+            .on("git", &["add", "--update"], "", true)
             .on(
                 "git",
-                &["add", "--update", "configs/*.tmpl", ".symlinks.toml", ".secrets.toml"],
+                &["add", "configs/", ".symlinks.toml", ".secrets.toml"],
                 "",
                 true,
             )
