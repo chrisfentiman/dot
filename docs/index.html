@@ -527,6 +527,152 @@
       border-radius: 3px;
     }
 
+    /* ── Terminal demo ── */
+    .demo-layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 0;
+      margin-top: 48px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      min-height: 420px;
+    }
+
+    .demo-sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .demo-cmd-btn {
+      background: transparent;
+      border: none;
+      border-radius: 7px;
+      padding: 10px 12px;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.12s;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .demo-cmd-btn:hover {
+      background: rgba(255,255,255,0.04);
+    }
+
+    .demo-cmd-btn.active {
+      background: rgba(99, 102, 241, 0.12);
+    }
+
+    .demo-cmd-name {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .demo-cmd-btn.active .demo-cmd-name {
+      color: var(--accent);
+    }
+
+    .demo-cmd-hint {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    .demo-screen {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .demo-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .demo-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+
+    .demo-titlebar-text {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: 4px;
+    }
+
+    .demo-output {
+      padding: 20px 24px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.7;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .demo-output .prompt { color: var(--muted); user-select: none; }
+    .demo-output .cmd    { color: var(--text); }
+    .demo-output .ok     { color: var(--green); }
+    .demo-output .warn   { color: var(--yellow); }
+    .demo-output .err    { color: var(--red); }
+    .demo-output .dim    { color: var(--muted); }
+    .demo-output .hi     { color: var(--accent); }
+    .demo-output .cyan   { color: #67e8f9; }
+
+    .demo-output .line {
+      display: block;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      white-space: pre;
+    }
+
+    .demo-output .line.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .demo-cursor {
+      display: inline-block;
+      width: 7px;
+      height: 14px;
+      background: var(--accent);
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+      margin-left: 1px;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    .demo-desc {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      background: var(--surface);
+    }
+
+    .demo-desc strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
     /* ── Install CTA ── */
     .install-section {
       text-align: center;
@@ -639,6 +785,21 @@
       .backends-grid {
         grid-template-columns: 1fr;
       }
+
+      .demo-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .demo-sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding: 8px;
+        gap: 4px;
+      }
+
+      .demo-cmd-hint { display: none; }
 
       .command-row {
         grid-template-columns: 1fr;
@@ -866,48 +1027,58 @@
     </div>
   </section>
 
-  <!-- Commands -->
+  <!-- Commands / Demo -->
   <section>
     <div class="container fade-in">
       <p class="section-label">Commands</p>
-      <h2 class="section-title">Everything you need, nothing you don't.</h2>
+      <h2 class="section-title">See it in action.</h2>
+      <p class="section-sub">Click any command to see what it does.</p>
 
-      <div class="commands-list">
-        <div class="command-row">
-          <span class="command-name">dotf init</span>
-          <span class="command-desc">Clone your dotfiles repo and bootstrap a new machine end-to-end.</span>
+      <div class="demo-layout">
+        <div class="demo-sidebar">
+          <button class="demo-cmd-btn active" data-cmd="status">
+            <span class="demo-cmd-name">dotf status</span>
+            <span class="demo-cmd-hint">Health check all managed configs</span>
+          </button>
+          <button class="demo-cmd-btn" data-cmd="init">
+            <span class="demo-cmd-name">dotf init</span>
+            <span class="demo-cmd-hint">Bootstrap a new machine</span>
+          </button>
+          <button class="demo-cmd-btn" data-cmd="config">
+            <span class="demo-cmd-name">dotf config</span>
+            <span class="demo-cmd-hint">Add a config file to manage</span>
+          </button>
+          <button class="demo-cmd-btn" data-cmd="sync">
+            <span class="demo-cmd-name">dotf sync</span>
+            <span class="demo-cmd-hint">Pull, render, push</span>
+          </button>
+          <button class="demo-cmd-btn" data-cmd="diff">
+            <span class="demo-cmd-name">dotf diff</span>
+            <span class="demo-cmd-hint">Preview changes before sync</span>
+          </button>
+          <button class="demo-cmd-btn" data-cmd="secrets">
+            <span class="demo-cmd-name">dotf secrets list</span>
+            <span class="demo-cmd-hint">Show secret mappings</span>
+          </button>
+          <button class="demo-cmd-btn" data-cmd="remove">
+            <span class="demo-cmd-name">dotf remove</span>
+            <span class="demo-cmd-hint">Stop managing a config</span>
+          </button>
+          <button class="demo-cmd-btn" data-cmd="modify">
+            <span class="demo-cmd-name">dotf modify</span>
+            <span class="demo-cmd-hint">Edit a template in $EDITOR</span>
+          </button>
         </div>
-        <div class="command-row">
-          <span class="command-name">dotf config &lt;path&gt;</span>
-          <span class="command-desc">Register a config file, converting it to a <code>.tmpl</code> and adding a symlink entry.</span>
-        </div>
-        <div class="command-row">
-          <span class="command-name">dotf modify &lt;path&gt;</span>
-          <span class="command-desc">Edit a template in your editor — dotf re-renders it on save.</span>
-        </div>
-        <div class="command-row">
-          <span class="command-name">dotf sync</span>
-          <span class="command-desc">Fetch secrets, render all templates, and lay down symlinks.</span>
-        </div>
-        <div class="command-row">
-          <span class="command-name">dotf diff</span>
-          <span class="command-desc">Show what would change between current state and a fresh render.</span>
-        </div>
-        <div class="command-row">
-          <span class="command-name">dotf status</span>
-          <span class="command-desc">Report which configs are managed, missing, or out of sync.</span>
-        </div>
-        <div class="command-row">
-          <span class="command-name">dotf remove &lt;path&gt;</span>
-          <span class="command-desc">Stop managing a config file and remove its symlink.</span>
-        </div>
-        <div class="command-row">
-          <span class="command-name">dotf secrets</span>
-          <span class="command-desc">Subcommands: <code>list</code>, <code>add</code>, <code>remove</code>, <code>validate</code> — manage your secret mappings.</span>
-        </div>
-        <div class="command-row">
-          <span class="command-name">dotf completions</span>
-          <span class="command-desc">Generate shell completions for bash, zsh, or fish.</span>
+
+        <div class="demo-screen">
+          <div class="demo-titlebar">
+            <div class="demo-dot" style="background:#ff5f57"></div>
+            <div class="demo-dot" style="background:#febc2e"></div>
+            <div class="demo-dot" style="background:#28c840"></div>
+            <span class="demo-titlebar-text">zsh — ~/</span>
+          </div>
+          <div class="demo-output" id="demo-output"></div>
+          <div class="demo-desc" id="demo-desc"></div>
         </div>
       </div>
     </div>
@@ -949,32 +1120,229 @@
   </footer>
 
   <script>
-    // Copy buttons
+    // ── Copy buttons ──────────────────────────────────────────────
     document.querySelectorAll('.copy-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const text = btn.dataset.copy;
-        navigator.clipboard.writeText(text).then(() => {
+        navigator.clipboard.writeText(btn.dataset.copy).then(() => {
           btn.textContent = 'Copied!';
           btn.classList.add('copied');
-          setTimeout(() => {
-            btn.textContent = 'Copy';
-            btn.classList.remove('copied');
-          }, 2000);
+          setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
         });
       });
     });
 
-    // Scroll fade-in
-    const observer = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-          observer.unobserve(entry.target);
-        }
-      });
+    // ── Scroll fade-in ────────────────────────────────────────────
+    const fadeObserver = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); fadeObserver.unobserve(e.target); } });
     }, { threshold: 0.1 });
+    document.querySelectorAll('.fade-in').forEach(el => fadeObserver.observe(el));
 
-    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+    // ── Terminal demo ─────────────────────────────────────────────
+    const DEMOS = {
+      status: {
+        desc: '<strong>dotf status</strong> — shows every managed config with its symlink health. <span style="color:var(--green)">ok</span> means the symlink exists and points to the rendered file. <span style="color:var(--yellow)">missing symlink</span> means the file was deleted from ~. <span style="color:var(--red)">broken</span> means the symlink target is gone.',
+        lines: [
+          { t: 'prompt', v: '$ dotf status' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'CONFIG                          TARGET                                    STATUS' },
+          { t: 'dim',    v: '────────────────────────────────────────────────────────────────────────────────' },
+          { t: 'ok',     v: '✓  .gitconfig                   ~/.gitconfig                              ok' },
+          { t: 'ok',     v: '✓  .zshrc                       ~/.zshrc                                  ok' },
+          { t: 'ok',     v: '✓  ssh_config                   ~/.ssh/config                             ok' },
+          { t: 'warn',   v: '!  .npmrc                       ~/.npmrc                                  missing symlink' },
+          { t: 'ok',     v: '✓  gh_config.yml                ~/.config/gh/config.yml                   ok' },
+          { t: 'ok',     v: '✓  mise_config.toml             ~/.config/mise/config.toml                ok' },
+        ]
+      },
+      init: {
+        desc: '<strong>dotf init</strong> — first-time setup on a new machine. Clones or creates your dotfiles repo, checks which secret backend CLIs are installed, runs your Brewfile if one exists, then renders all templates and lays down symlinks.',
+        lines: [
+          { t: 'prompt', v: '$ dotf init' },
+          { t: 'dim',    v: '' },
+          { t: 'cyan',   v: '┌─────────────────────────────────────┐' },
+          { t: 'cyan',   v: '│        dotf — dotfiles manager       │' },
+          { t: 'cyan',   v: '│    secret injection via pass/op/bw   │' },
+          { t: 'cyan',   v: '└─────────────────────────────────────┘' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'Git repo URL to clone (leave blank to create fresh repo):' },
+          { t: 'ok',     v: '✓  Cloned dotfiles to ~/dotfiles' },
+          { t: 'ok',     v: '✓  1Password CLI (op) available' },
+          { t: 'dim',    v: '·  No Brewfile found, skipping brew bundle' },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: 'Setup complete!' },
+          { t: 'ok',     v: '  ✓  .gitconfig → ~/.gitconfig' },
+          { t: 'ok',     v: '  ✓  .zshrc     → ~/.zshrc' },
+          { t: 'ok',     v: '  ✓  ssh_config → ~/.ssh/config' },
+        ]
+      },
+      config: {
+        desc: '<strong>dotf config &lt;path&gt;</strong> — adds a file to dotf management. Shows you the file contents, asks which values are secrets, replaces them with <code style="font-family:var(--mono);font-size:11px;color:var(--text)">{{PLACEHOLDERS}}</code>, writes the template, updates <code style="font-family:var(--mono);font-size:11px;color:var(--text)">.secrets.toml</code> and <code style="font-family:var(--mono);font-size:11px;color:var(--text)">.symlinks.toml</code>, then renders and symlinks.',
+        lines: [
+          { t: 'prompt', v: '$ dotf config ~/.gitconfig' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'File contents of /Users/chris/.gitconfig:' },
+          { t: 'dim',    v: '────────────────────────────────────────────────────────────' },
+          { t: 'dim',    v: '[user]' },
+          { t: 'dim',    v: '  name  = Chris Fentiman' },
+          { t: 'warn',   v: '  email = chris@example.com' },
+          { t: 'dim',    v: '────────────────────────────────────────────────────────────' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'Does this file contain a secret you want to inject? [y/n]: y' },
+          { t: 'dim',    v: 'Paste the exact secret value to replace: chris@example.com' },
+          { t: 'dim',    v: 'Placeholder name (e.g. GITHUB_EMAIL): GIT_EMAIL' },
+          { t: 'dim',    v: 'Secret URI: op://personal/github/email' },
+          { t: 'dim',    v: 'Another secret? [y/n]: n' },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: '✓  Template written to ~/dotfiles/configs/.gitconfig.tmpl' },
+          { t: 'ok',     v: '✓  Added 1 secret to .secrets.toml' },
+          { t: 'ok',     v: '✓  Rendered and symlinked ~/.gitconfig' },
+        ]
+      },
+      sync: {
+        desc: '<strong>dotf sync</strong> — the everyday command. Pulls the latest templates from git (rebase), re-renders all templates by fetching fresh secrets, lays down symlinks, then commits any changes and pushes. Detects and explains merge conflicts if they occur.',
+        lines: [
+          { t: 'prompt', v: '$ dotf sync' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'Pulling latest changes...' },
+          { t: 'dim',    v: 'Current branch main is up to date.' },
+          { t: 'ok',     v: '✓  git pull done' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'Re-rendering templates and updating symlinks...' },
+          { t: 'ok',     v: '  ✓  .gitconfig → ~/.gitconfig' },
+          { t: 'ok',     v: '  ✓  .zshrc → ~/.zshrc' },
+          { t: 'ok',     v: '  ✓  ssh_config → ~/.ssh/config' },
+          { t: 'ok',     v: '  ✓  gh_config.yml → ~/.config/gh/config.yml' },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: '✓  Committed: sync: 2026-03-12' },
+          { t: 'ok',     v: '✓  Pushed to remote' },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: '✓  Sync complete — 4 config(s) up to date' },
+        ]
+      },
+      diff: {
+        desc: '<strong>dotf diff [name]</strong> — re-renders templates in memory (fetching fresh secrets) and diffs the result against the currently rendered file. Shows you exactly what will change on the next sync without writing anything. Useful after a <code style="font-family:var(--mono);font-size:11px;color:var(--text)">git pull</code>.',
+        lines: [
+          { t: 'prompt', v: '$ dotf diff .gitconfig' },
+          { t: 'dim',    v: '' },
+          { t: 'hi',     v: '━━ diff: .gitconfig' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: '  [user]' },
+          { t: 'dim',    v: '    name  = Chris Fentiman' },
+          { t: 'err',    v: '-   email = chris@old-address.com' },
+          { t: 'ok',     v: '+   email = chris@new-address.com' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: '  [core]' },
+          { t: 'dim',    v: '    editor     = nvim' },
+          { t: 'dim',    v: '    autocrlf   = input' },
+          { t: 'dim',    v: '    ignorecase = false' },
+        ]
+      },
+      secrets: {
+        desc: '<strong>dotf secrets list</strong> — shows every placeholder mapped in <code style="font-family:var(--mono);font-size:11px;color:var(--text)">.secrets.toml</code>, its secret URI, and which backend will serve it. Also: <code style="font-family:var(--mono);font-size:11px;color:var(--text)">dotf secrets validate</code> to test all backends, <code style="font-family:var(--mono);font-size:11px;color:var(--text)">add &lt;name&gt; &lt;uri&gt;</code> and <code style="font-family:var(--mono);font-size:11px;color:var(--text)">remove &lt;name&gt;</code> to manage entries.',
+        lines: [
+          { t: 'prompt', v: '$ dotf secrets list' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'PLACEHOLDER        SECRET URI                          BACKEND' },
+          { t: 'dim',    v: '──────────────────────────────────────────────────────────────' },
+          { t: 'ok',     v: 'GIT_EMAIL          op://personal/github/email          1Password' },
+          { t: 'ok',     v: 'GITHUB_TOKEN       op://personal/github/token          1Password' },
+          { t: 'ok',     v: 'SSH_PASSPHRASE     pass://keys/ssh/main                Proton Pass' },
+          { t: 'ok',     v: 'NPM_TOKEN          env://NPM_TOKEN                     environment' },
+          { t: 'dim',    v: '' },
+          { t: 'prompt', v: '$ dotf secrets validate' },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: '✓  GIT_EMAIL (op://personal/github/email)' },
+          { t: 'ok',     v: '✓  GITHUB_TOKEN (op://personal/github/token)' },
+          { t: 'ok',     v: '✓  SSH_PASSPHRASE (pass://keys/ssh/main)' },
+          { t: 'ok',     v: '✓  NPM_TOKEN (env://NPM_TOKEN)' },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: '4 passed, 0 failed' },
+        ]
+      },
+      remove: {
+        desc: '<strong>dotf remove [name]</strong> — stops managing a config file. Shows what will be deleted, asks if you want the rendered file restored in place of the symlink (so your config still works after removal), then removes the template, rendered file, symlink, and the entry from <code style="font-family:var(--mono);font-size:11px;color:var(--text)">.symlinks.toml</code>.',
+        lines: [
+          { t: 'prompt', v: '$ dotf remove .npmrc' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'This will:' },
+          { t: 'dim',    v: '  ·  Remove symlink ~/.npmrc' },
+          { t: 'dim',    v: '  ·  Remove template ~/dotfiles/configs/.npmrc.tmpl' },
+          { t: 'dim',    v: '  ·  Remove rendered ~/dotfiles/configs/.npmrc' },
+          { t: 'dim',    v: '  ·  Remove from .symlinks.toml' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: 'Restore rendered file to ~/.npmrc? [Y/n]: Y' },
+          { t: 'dim',    v: "Remove '.npmrc' from dotf management? [y/N]: y" },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: '✓  Removed symlink ~/.npmrc' },
+          { t: 'ok',     v: '✓  Restored file to ~/.npmrc' },
+          { t: 'ok',     v: '✓  Removed template .npmrc.tmpl' },
+          { t: 'ok',     v: '✓  Removed from .symlinks.toml' },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: "✓  '.npmrc' is no longer managed by dotf" },
+        ]
+      },
+      modify: {
+        desc: '<strong>dotf modify [name]</strong> — opens the template file in your <code style="font-family:var(--mono);font-size:11px;color:var(--text)">$EDITOR</code>. When you save and close, dotf immediately re-renders the template with fresh secrets and updates the symlink. Your live config reflects the change instantly.',
+        lines: [
+          { t: 'prompt', v: '$ dotf modify .zshrc' },
+          { t: 'dim',    v: '' },
+          { t: 'dim',    v: '# opens ~/dotfiles/configs/.zshrc.tmpl in $EDITOR' },
+          { t: 'dim',    v: '# ... you edit, save, and close ...' },
+          { t: 'dim',    v: '' },
+          { t: 'ok',     v: '✓  Re-rendered .zshrc' },
+          { t: 'ok',     v: '✓  Symlink up to date: ~/.zshrc → ~/dotfiles/configs/.zshrc' },
+          { t: 'ok',     v: '✓  .zshrc updated' },
+        ]
+      },
+    };
+
+    const output  = document.getElementById('demo-output');
+    const descEl  = document.getElementById('demo-desc');
+    let   timer   = null;
+
+    function runDemo(key) {
+      // Update active button
+      document.querySelectorAll('.demo-cmd-btn').forEach(b => b.classList.toggle('active', b.dataset.cmd === key));
+
+      const demo = DEMOS[key];
+      descEl.innerHTML = demo.desc;
+
+      // Clear pending timers and output
+      if (timer) clearTimeout(timer);
+      output.innerHTML = '';
+
+      // Render lines with staggered reveal
+      demo.lines.forEach((line, i) => {
+        const span = document.createElement('span');
+        span.className = `line ${line.t}`;
+
+        // First line is the command — show the prompt separately
+        if (i === 0) {
+          span.innerHTML = `<span class="prompt">$ </span><span class="cmd">${line.v.replace(/^\$ /, '')}</span><span class="demo-cursor"></span>`;
+        } else {
+          span.textContent = line.v;
+        }
+
+        output.appendChild(span);
+        // Remove cursor from command line once output starts
+        if (i === 1) {
+          const cursor = output.querySelector('.demo-cursor');
+          if (cursor) cursor.remove();
+        }
+
+        timer = setTimeout(() => {
+          span.classList.add('show');
+        }, i === 0 ? 80 : 80 + i * 60);
+      });
+    }
+
+    // Wire up buttons
+    document.querySelectorAll('.demo-cmd-btn').forEach(btn => {
+      btn.addEventListener('click', () => runDemo(btn.dataset.cmd));
+    });
+
+    // Run default on load
+    runDemo('status');
   </script>
 
 </body>
