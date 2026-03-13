@@ -31,13 +31,17 @@ pub struct DotfContext {
 impl DotfContext {
     /// Construct a global-mode context (the default).
     pub fn global() -> Self {
-        Self { mode: DotfMode::Global }
+        Self {
+            mode: DotfMode::Global,
+        }
     }
 
     /// Construct a local-mode context rooted at `project_root`.
     /// The directory does not need to exist yet (init creates it).
     pub fn local(project_root: PathBuf) -> Self {
-        Self { mode: DotfMode::Local(project_root) }
+        Self {
+            mode: DotfMode::Local(project_root),
+        }
     }
 
     /// The base directory where dotf stores its data.
@@ -47,8 +51,8 @@ impl DotfContext {
     pub fn dotfiles_dir(&self) -> Result<PathBuf> {
         match &self.mode {
             DotfMode::Global => {
-                let home = dirs::home_dir()
-                    .ok_or_else(|| anyhow!("Cannot determine home directory"))?;
+                let home =
+                    dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
                 Ok(home.join("dotfiles"))
             }
             DotfMode::Local(root) => Ok(root.join(".dotf")),
@@ -143,10 +147,7 @@ impl DotfContext {
             // Validate the symlink destination stays inside the root directory
             // after resolving any `..` segments.
             let canonical_link = link_path.canonicalize().unwrap_or_else(|_| {
-                let file_name = link_path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
+                let file_name = link_path.file_name().unwrap_or_default().to_string_lossy();
                 if file_name.contains("..") {
                     return link_path.clone();
                 }
@@ -248,8 +249,7 @@ fn read_toml_file<T: serde::de::DeserializeOwned + Default>(path: &Path) -> Resu
     }
     let content =
         fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    toml::from_str(&content)
-        .with_context(|| format!("Failed to parse {}", path.display()))
+    toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
 }
 
 pub fn fetch_secret(uri: &str) -> Result<Zeroizing<String>> {
@@ -290,7 +290,9 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
             continue;
         }
         match fetch_secret(uri) {
-            Ok(val) => { fetched.insert(name.clone(), val); }
+            Ok(val) => {
+                fetched.insert(name.clone(), val);
+            }
             Err(e) => failed.push(format!("{name} ({uri}): {e}")),
         }
     }
@@ -369,7 +371,8 @@ pub fn atomic_write(path: &Path, data: &[u8], mode: u32) -> Result<()> {
     // to read or swap the tempfile before rename completes.
     #[cfg(unix)]
     {
-        let parent_mode = parent.metadata()
+        let parent_mode = parent
+            .metadata()
             .with_context(|| format!("Failed to stat {}", parent.display()))?
             .permissions()
             .mode();
@@ -605,10 +608,7 @@ mod tests {
         let secrets = SecretsFile::default();
         let err = render_template(&tmpl, &secrets).unwrap_err();
         let chain = format!("{err:?}");
-        assert!(
-            chain.contains("MISSING"),
-            "unexpected error: {err}"
-        );
+        assert!(chain.contains("MISSING"), "unexpected error: {err}");
     }
 
     #[test]
@@ -655,7 +655,10 @@ mod tests {
         };
 
         let err = render_template(&tmpl, &secrets).unwrap_err();
-        assert!(err.to_string().contains("BAD"), "error should name the failed secret");
+        assert!(
+            err.to_string().contains("BAD"),
+            "error should name the failed secret"
+        );
         assert!(err.to_string().contains("1 secret(s)"));
     }
 
@@ -672,7 +675,10 @@ mod tests {
         let secrets = SecretsFile {
             secrets: HashMap::from([
                 ("USED".to_string(), "env://_DOTF_T_USED".to_string()),
-                ("UNUSED".to_string(), "env://_DOTF_NONEXISTENT_ABC".to_string()),
+                (
+                    "UNUSED".to_string(),
+                    "env://_DOTF_NONEXISTENT_ABC".to_string(),
+                ),
             ]),
         };
 
@@ -884,7 +890,10 @@ mod tests {
     fn secrets_file_rejects_invalid_placeholder_names() {
         let toml_str = "[secrets]\n\"invalid-name\" = \"env://FOO\"\n";
         let err: std::result::Result<SecretsFile, _> = toml::from_str(toml_str);
-        assert!(err.is_err(), "hyphen in placeholder name should be rejected");
+        assert!(
+            err.is_err(),
+            "hyphen in placeholder name should be rejected"
+        );
         let msg = err.unwrap_err().to_string();
         assert!(msg.contains("invalid-name") || msg.contains("Invalid placeholder"));
     }
@@ -1034,7 +1043,10 @@ mod tests {
                 ("B".to_string(), "env://_DOTF_T_3B".to_string()),
                 ("C".to_string(), "env://_DOTF_T_3C".to_string()),
                 // Poison: would fail if fetched
-                ("UNUSED".to_string(), "env://_DOTF_NONEXISTENT_3".to_string()),
+                (
+                    "UNUSED".to_string(),
+                    "env://_DOTF_NONEXISTENT_3".to_string(),
+                ),
             ]),
         };
         let rendered = render_template(&tmpl, &secrets).unwrap();
@@ -1145,7 +1157,8 @@ mod tests {
         fs::create_dir_all(ctx.dotfiles_dir().unwrap()).unwrap();
 
         let mut sf = SecretsFile::default();
-        sf.secrets.insert("KEY".to_string(), "env://KEY".to_string());
+        sf.secrets
+            .insert("KEY".to_string(), "env://KEY".to_string());
         ctx.write_secrets(&sf).unwrap();
         let loaded = ctx.read_secrets().unwrap();
         assert_eq!(loaded.secrets["KEY"], "env://KEY");
@@ -1185,7 +1198,8 @@ mod tests {
         fs::write(
             dotf_dir.join(".symlinks.toml"),
             toml::to_string_pretty(&sl).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         fs::write(dotf_dir.join(".secrets.toml"), "[secrets]\n").unwrap();
 
         let done = ctx.render_and_symlink_all().unwrap();
@@ -1217,7 +1231,8 @@ mod tests {
         fs::write(
             dotf_dir.join(".symlinks.toml"),
             toml::to_string_pretty(&sl).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         fs::write(dotf_dir.join(".secrets.toml"), "[secrets]\n").unwrap();
 
         let err = ctx.render_and_symlink_all().unwrap_err();

@@ -15,9 +15,7 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext, name: Option<String>) -> Resu
             let mut names: Vec<String> = symlinks.symlinks.keys().cloned().collect();
             names.sort();
             if names.is_empty() {
-                anyhow::bail!(
-                    "No managed configs found. Run `dotf config <path>` to add one."
-                );
+                anyhow::bail!("No managed configs found. Run `dotf config <path>` to add one.");
             }
             let selection = Select::with_theme(&ColorfulTheme::default())
                 .with_prompt("Select config to modify")
@@ -103,12 +101,8 @@ mod tests {
         .unwrap();
 
         let tmpl_path = dotfiles_dir.join("configs/gitconfig.tmpl");
-        let runner = MockRunner::new().on(
-            "false-editor",
-            &[tmpl_path.to_str().unwrap()],
-            "",
-            false,
-        );
+        let runner =
+            MockRunner::new().on("false-editor", &[tmpl_path.to_str().unwrap()], "", false);
 
         let ctx = DotfContext::global();
         let err = run(&runner, &ctx, Some("gitconfig".to_string())).unwrap_err();

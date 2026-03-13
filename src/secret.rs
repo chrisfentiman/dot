@@ -137,23 +137,26 @@ fn run_secret_cli(
     if !output.success {
         let lossy = Zeroizing::new(String::from_utf8_lossy(&output.stderr).into_owned());
         let stderr = truncate_stderr(&lossy, 512);
-        return Err(anyhow!("{friendly_name} failed for {original_uri}: {stderr}"));
+        return Err(anyhow!(
+            "{friendly_name} failed for {original_uri}: {stderr}"
+        ));
     }
 
-    let mut value = Zeroizing::new(
-        String::from_utf8(output.stdout)
-            .map_err(|e| {
-                let mut bytes = e.into_bytes();
-                zeroize::Zeroize::zeroize(&mut bytes);
-                anyhow!("{friendly_name} output for {original_uri} is not valid UTF-8")
-            })?,
-    );
+    let mut value = Zeroizing::new(String::from_utf8(output.stdout).map_err(|e| {
+        let mut bytes = e.into_bytes();
+        zeroize::Zeroize::zeroize(&mut bytes);
+        anyhow!("{friendly_name} output for {original_uri} is not valid UTF-8")
+    })?);
     let trimmed_len = value.trim_end_matches(['\n', '\r']).len();
     value.truncate(trimmed_len);
     Ok(value)
 }
 
-fn fetch_pass_with(path: &str, original_uri: &str, runner: &dyn SecretRunner) -> Result<Zeroizing<String>> {
+fn fetch_pass_with(
+    path: &str,
+    original_uri: &str,
+    runner: &dyn SecretRunner,
+) -> Result<Zeroizing<String>> {
     let full_uri = format!("pass://{path}");
     run_secret_cli(
         runner,
@@ -166,7 +169,11 @@ fn fetch_pass_with(path: &str, original_uri: &str, runner: &dyn SecretRunner) ->
     )
 }
 
-fn fetch_op_with(path: &str, original_uri: &str, runner: &dyn SecretRunner) -> Result<Zeroizing<String>> {
+fn fetch_op_with(
+    path: &str,
+    original_uri: &str,
+    runner: &dyn SecretRunner,
+) -> Result<Zeroizing<String>> {
     let full_uri = format!("op://{path}");
     // Forward only OP_SESSION_<account> and OP_SERVICE_ACCOUNT_TOKEN — the op CLI
     // requires these for non-interactive auth. The length limit (≤40 total chars)
@@ -190,7 +197,11 @@ fn fetch_op_with(path: &str, original_uri: &str, runner: &dyn SecretRunner) -> R
     )
 }
 
-fn fetch_bw_with(path: &str, original_uri: &str, runner: &dyn SecretRunner) -> Result<Zeroizing<String>> {
+fn fetch_bw_with(
+    path: &str,
+    original_uri: &str,
+    runner: &dyn SecretRunner,
+) -> Result<Zeroizing<String>> {
     let (item, field) = match path.rsplit_once('/') {
         Some((item, field)) if !item.is_empty() => (item, field),
         Some(("", _)) => {
@@ -239,7 +250,11 @@ mod tests {
     // ── MockSecretRunner ────────────────────────────────────────
 
     struct MockSecretRunner {
-        responses: Vec<(String, Vec<String>, Result<SecretOutput, std::io::ErrorKind>)>,
+        responses: Vec<(
+            String,
+            Vec<String>,
+            Result<SecretOutput, std::io::ErrorKind>,
+        )>,
         captured_envs: RefCell<Vec<Vec<(String, String)>>>,
     }
 
@@ -441,7 +456,10 @@ mod tests {
     fn truncate_stderr_short_passthrough() {
         let result = truncate_stderr("short error", 512);
         assert_eq!(&*result, "short error");
-        assert!(matches!(result, std::borrow::Cow::Borrowed(_)), "short input should borrow");
+        assert!(
+            matches!(result, std::borrow::Cow::Borrowed(_)),
+            "short input should borrow"
+        );
     }
 
     #[test]
@@ -457,7 +475,10 @@ mod tests {
         assert!(result.len() < 30, "should be truncated: {}", result.len());
         assert!(result.contains("(truncated)"));
         assert!(result.starts_with("xxxxxxxxxx"));
-        assert!(matches!(result, std::borrow::Cow::Owned(_)), "truncated should be owned");
+        assert!(
+            matches!(result, std::borrow::Cow::Owned(_)),
+            "truncated should be owned"
+        );
     }
 
     #[test]
@@ -494,7 +515,9 @@ mod tests {
     #[test]
     fn forwarded_env_missing_extra_skipped() {
         let _g = crate::env_lock();
-        unsafe { std::env::remove_var("_DOTF_FWD_ABSENT"); }
+        unsafe {
+            std::env::remove_var("_DOTF_FWD_ABSENT");
+        }
         let env = forwarded_env(&["_DOTF_FWD_ABSENT"]);
         let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
         assert!(!keys.contains(&"_DOTF_FWD_ABSENT"));
@@ -504,70 +527,115 @@ mod tests {
 
     #[test]
     fn run_secret_cli_success_strips_newlines() {
-        let runner = MockSecretRunner::new()
-            .on_success("mycli", &["arg1"], b"secret-value\n\n");
+        let runner = MockSecretRunner::new().on_success("mycli", &["arg1"], b"secret-value\n\n");
         let result = run_secret_cli(
-            &runner, "mycli", &["arg1"], vec![],
-            "TestCLI", "install hint", "test://uri",
-        ).unwrap();
+            &runner,
+            "mycli",
+            &["arg1"],
+            vec![],
+            "TestCLI",
+            "install hint",
+            "test://uri",
+        )
+        .unwrap();
         assert_eq!(result.as_str(), "secret-value");
     }
 
     #[test]
     fn run_secret_cli_strips_cr_and_lf() {
-        let runner = MockSecretRunner::new()
-            .on_success("mycli", &[], b"value\r\n");
+        let runner = MockSecretRunner::new().on_success("mycli", &[], b"value\r\n");
         let result = run_secret_cli(
-            &runner, "mycli", &[], vec![],
-            "TestCLI", "hint", "test://uri",
-        ).unwrap();
+            &runner,
+            "mycli",
+            &[],
+            vec![],
+            "TestCLI",
+            "hint",
+            "test://uri",
+        )
+        .unwrap();
         assert_eq!(result.as_str(), "value");
     }
 
     #[test]
     fn run_secret_cli_failure_includes_stderr() {
-        let runner = MockSecretRunner::new()
-            .on_failure("mycli", &["arg1"], b"auth failed");
+        let runner = MockSecretRunner::new().on_failure("mycli", &["arg1"], b"auth failed");
         let err = run_secret_cli(
-            &runner, "mycli", &["arg1"], vec![],
-            "TestCLI", "install hint", "test://uri",
-        ).unwrap_err();
+            &runner,
+            "mycli",
+            &["arg1"],
+            vec![],
+            "TestCLI",
+            "install hint",
+            "test://uri",
+        )
+        .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("auth failed"), "should include stderr: {msg}");
-        assert!(msg.contains("TestCLI"), "should include friendly name: {msg}");
+        assert!(
+            msg.contains("TestCLI"),
+            "should include friendly name: {msg}"
+        );
     }
 
     #[test]
     fn run_secret_cli_non_utf8_errors() {
-        let runner = MockSecretRunner::new()
-            .on_success("mycli", &[], &[0xFF, 0xFE]);
+        let runner = MockSecretRunner::new().on_success("mycli", &[], &[0xFF, 0xFE]);
         let err = run_secret_cli(
-            &runner, "mycli", &[], vec![],
-            "TestCLI", "hint", "test://uri",
-        ).unwrap_err();
+            &runner,
+            "mycli",
+            &[],
+            vec![],
+            "TestCLI",
+            "hint",
+            "test://uri",
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("not valid UTF-8"));
     }
 
     #[test]
     fn run_secret_cli_io_error_includes_hint() {
-        let runner = MockSecretRunner::new()
-            .on_io_error("mycli", &[], std::io::ErrorKind::NotFound);
+        let runner =
+            MockSecretRunner::new().on_io_error("mycli", &[], std::io::ErrorKind::NotFound);
         let err = run_secret_cli(
-            &runner, "mycli", &[], vec![],
-            "TestCLI", "install: brew install mycli", "test://uri",
-        ).unwrap_err();
+            &runner,
+            "mycli",
+            &[],
+            vec![],
+            "TestCLI",
+            "install: brew install mycli",
+            "test://uri",
+        )
+        .unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("TestCLI"), "should include friendly name: {msg}");
-        assert!(msg.contains("install: brew install mycli"), "should include hint: {msg}");
+        assert!(
+            msg.contains("TestCLI"),
+            "should include friendly name: {msg}"
+        );
+        assert!(
+            msg.contains("install: brew install mycli"),
+            "should include hint: {msg}"
+        );
     }
 
     // ── fetch_pass_with ─────────────────────────────────────────
 
     #[test]
     fn fetch_pass_with_constructs_correct_args() {
-        let runner = MockSecretRunner::new()
-            .on_success("pass", &["item", "get", "pass://vault/item/field", "--fields", "password"], b"s3cret\n");
-        let result = fetch_pass_with("vault/item/field", "pass://vault/item/field", &runner).unwrap();
+        let runner = MockSecretRunner::new().on_success(
+            "pass",
+            &[
+                "item",
+                "get",
+                "pass://vault/item/field",
+                "--fields",
+                "password",
+            ],
+            b"s3cret\n",
+        );
+        let result =
+            fetch_pass_with("vault/item/field", "pass://vault/item/field", &runner).unwrap();
         assert_eq!(result.as_str(), "s3cret");
     }
 
@@ -575,8 +643,11 @@ mod tests {
 
     #[test]
     fn fetch_op_with_constructs_correct_args() {
-        let runner = MockSecretRunner::new()
-            .on_success("op", &["read", "op://vault/item/field"], b"op-secret\n");
+        let runner = MockSecretRunner::new().on_success(
+            "op",
+            &["read", "op://vault/item/field"],
+            b"op-secret\n",
+        );
         let result = fetch_op_with("vault/item/field", "op://vault/item/field", &runner).unwrap();
         assert_eq!(result.as_str(), "op-secret");
     }
@@ -587,15 +658,20 @@ mod tests {
         let _session = crate::EnvGuard::set("OP_SESSION_myacct", "tok123");
         let _sa_tok = crate::EnvGuard::set("OP_SERVICE_ACCOUNT_TOKEN", "sa-tok");
 
-        let runner = MockSecretRunner::new()
-            .on_success("op", &["read", "op://v/i/f"], b"val");
+        let runner = MockSecretRunner::new().on_success("op", &["read", "op://v/i/f"], b"val");
         fetch_op_with("v/i/f", "op://v/i/f", &runner).unwrap();
 
         let envs = runner.captured_envs.borrow();
         assert_eq!(envs.len(), 1);
         let env_keys: Vec<&str> = envs[0].iter().map(|(k, _)| k.as_str()).collect();
-        assert!(env_keys.contains(&"OP_SESSION_myacct"), "should forward OP_SESSION_*");
-        assert!(env_keys.contains(&"OP_SERVICE_ACCOUNT_TOKEN"), "should forward OP_SERVICE_ACCOUNT_TOKEN");
+        assert!(
+            env_keys.contains(&"OP_SESSION_myacct"),
+            "should forward OP_SESSION_*"
+        );
+        assert!(
+            env_keys.contains(&"OP_SERVICE_ACCOUNT_TOKEN"),
+            "should forward OP_SERVICE_ACCOUNT_TOKEN"
+        );
     }
 
     #[test]
@@ -605,53 +681,58 @@ mod tests {
         let long_key = format!("OP_SESSION_{}", "x".repeat(30));
         let _long = crate::EnvGuard::set(&long_key, "val");
 
-        let runner = MockSecretRunner::new()
-            .on_success("op", &["read", "op://v/i/f"], b"val");
+        let runner = MockSecretRunner::new().on_success("op", &["read", "op://v/i/f"], b"val");
         fetch_op_with("v/i/f", "op://v/i/f", &runner).unwrap();
 
         let envs = runner.captured_envs.borrow();
         let env_keys: Vec<&str> = envs[0].iter().map(|(k, _)| k.as_str()).collect();
-        assert!(!env_keys.contains(&long_key.as_str()), "should not forward overly long OP_SESSION_ var");
+        assert!(
+            !env_keys.contains(&long_key.as_str()),
+            "should not forward overly long OP_SESSION_ var"
+        );
     }
 
     // ── fetch_bw_with ───────────────────────────────────────────
 
     #[test]
     fn fetch_bw_with_password_field() {
-        let runner = MockSecretRunner::new()
-            .on_success("bw", &["get", "password", "myitem"], b"pw123\n");
+        let runner =
+            MockSecretRunner::new().on_success("bw", &["get", "password", "myitem"], b"pw123\n");
         let result = fetch_bw_with("myitem/password", "bw://myitem/password", &runner).unwrap();
         assert_eq!(result.as_str(), "pw123");
     }
 
     #[test]
     fn fetch_bw_with_username_field() {
-        let runner = MockSecretRunner::new()
-            .on_success("bw", &["get", "username", "myitem"], b"user1");
+        let runner =
+            MockSecretRunner::new().on_success("bw", &["get", "username", "myitem"], b"user1");
         let result = fetch_bw_with("myitem/username", "bw://myitem/username", &runner).unwrap();
         assert_eq!(result.as_str(), "user1");
     }
 
     #[test]
     fn fetch_bw_with_no_field_defaults_to_password() {
-        let runner = MockSecretRunner::new()
-            .on_success("bw", &["get", "password", "myitem"], b"pw");
+        let runner =
+            MockSecretRunner::new().on_success("bw", &["get", "password", "myitem"], b"pw");
         let result = fetch_bw_with("myitem", "bw://myitem", &runner).unwrap();
         assert_eq!(result.as_str(), "pw");
     }
 
     #[test]
     fn fetch_bw_with_notes_field() {
-        let runner = MockSecretRunner::new()
-            .on_success("bw", &["get", "notes", "myitem"], b"some notes");
+        let runner =
+            MockSecretRunner::new().on_success("bw", &["get", "notes", "myitem"], b"some notes");
         let result = fetch_bw_with("myitem/notes", "bw://myitem/notes", &runner).unwrap();
         assert_eq!(result.as_str(), "some notes");
     }
 
     #[test]
     fn fetch_bw_with_uri_field() {
-        let runner = MockSecretRunner::new()
-            .on_success("bw", &["get", "uri", "myitem"], b"https://example.com");
+        let runner = MockSecretRunner::new().on_success(
+            "bw",
+            &["get", "uri", "myitem"],
+            b"https://example.com",
+        );
         let result = fetch_bw_with("myitem/uri", "bw://myitem/uri", &runner).unwrap();
         assert_eq!(result.as_str(), "https://example.com");
     }

@@ -157,7 +157,8 @@ fn add(ctx: &DotfContext, name: String, uri: String) -> Result<()> {
     let mut secrets = ctx.read_secrets()?;
     let existed = secrets.secrets.contains_key(&name);
     secrets.secrets.insert(name.clone(), uri.clone());
-    ctx.write_secrets(&secrets).context("Failed to write .secrets.toml")?;
+    ctx.write_secrets(&secrets)
+        .context("Failed to write .secrets.toml")?;
 
     if existed {
         println!("{} Updated {} -> {}", "✓".green(), name.cyan(), uri);
@@ -172,7 +173,8 @@ fn remove(ctx: &DotfContext, name: String) -> Result<()> {
     if secrets.secrets.remove(&name).is_none() {
         anyhow::bail!("Secret '{}' not found in .secrets.toml", name);
     }
-    ctx.write_secrets(&secrets).context("Failed to write .secrets.toml")?;
+    ctx.write_secrets(&secrets)
+        .context("Failed to write .secrets.toml")?;
     println!("{} Removed {}", "✓".green(), name.cyan());
     Ok(())
 }
@@ -196,7 +198,11 @@ mod tests {
             let dotfiles = tmp.path().join("dotfiles");
             std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
             let _home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
-            Env { _tmp: tmp, _home_guard, _lock }
+            Env {
+                _tmp: tmp,
+                _home_guard,
+                _lock,
+            }
         }
     }
 
@@ -251,7 +257,9 @@ mod tests {
     #[test]
     fn validate_fails_when_secret_missing() {
         let _e = Env::new();
-        unsafe { std::env::remove_var("_DOTF_TEST_ABSENT"); }
+        unsafe {
+            std::env::remove_var("_DOTF_TEST_ABSENT");
+        }
         add(&ctx(), "ABSENT".into(), "env://_DOTF_TEST_ABSENT".into()).unwrap();
         let err = validate(&ctx()).unwrap_err();
         assert!(err.to_string().contains("failed validation"));

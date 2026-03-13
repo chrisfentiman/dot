@@ -34,8 +34,11 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
     }
 
     if !pull.success() {
-        let conflicts =
-            runner.run("git", &["diff", "--name-only", "--diff-filter=U"], Some(&dotfiles_dir))?;
+        let conflicts = runner.run(
+            "git",
+            &["diff", "--name-only", "--diff-filter=U"],
+            Some(&dotfiles_dir),
+        )?;
 
         if !conflicts.stdout.trim().is_empty() {
             println!();
@@ -98,7 +101,12 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
         } else {
             anyhow::bail!(
                 "git commit failed: {}",
-                commit.stderr.trim().lines().next().unwrap_or("unknown error")
+                commit
+                    .stderr
+                    .trim()
+                    .lines()
+                    .next()
+                    .unwrap_or("unknown error")
             );
         }
     } else {
@@ -149,7 +157,11 @@ mod tests {
         std::fs::write(dotfiles.join(".symlinks.toml"), "[symlinks]\n").unwrap();
         std::fs::write(dotfiles.join(".secrets.toml"), "[secrets]\n").unwrap();
         let home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
-        SyncEnv { _home_guard: home_guard, _tmp: tmp, _lock: lock }
+        SyncEnv {
+            _home_guard: home_guard,
+            _tmp: tmp,
+            _lock: lock,
+        }
     }
 
     fn today_commit_msg() -> String {
@@ -215,7 +227,12 @@ mod tests {
                 "",
                 true,
             )
-            .on_err("git", &["commit", "-m", &msg], "nothing to commit, working tree clean", false);
+            .on_err(
+                "git",
+                &["commit", "-m", &msg],
+                "nothing to commit, working tree clean",
+                false,
+            );
         run(&runner, &ctx()).unwrap();
     }
 

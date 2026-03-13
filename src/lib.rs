@@ -26,8 +26,13 @@ impl EnvGuard {
     /// Set an env var, returning a guard that restores the original value on drop.
     pub(crate) fn set(key: &str, val: &str) -> Self {
         let prev = std::env::var(key).ok();
-        unsafe { std::env::set_var(key, val); }
-        Self { key: key.to_string(), prev }
+        unsafe {
+            std::env::set_var(key, val);
+        }
+        Self {
+            key: key.to_string(),
+            prev,
+        }
     }
 }
 
@@ -35,8 +40,12 @@ impl EnvGuard {
 impl Drop for EnvGuard {
     fn drop(&mut self) {
         match &self.prev {
-            Some(v) => unsafe { std::env::set_var(&self.key, v); },
-            None => unsafe { std::env::remove_var(&self.key); },
+            Some(v) => unsafe {
+                std::env::set_var(&self.key, v);
+            },
+            None => unsafe {
+                std::env::remove_var(&self.key);
+            },
         }
     }
 }

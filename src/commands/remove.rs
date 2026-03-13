@@ -83,10 +83,8 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
         Ok(()) => println!("{} Removed symlink {}", "✓".green(), link_path.display()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            return Err(
-                anyhow::Error::new(e)
-                    .context(format!("Failed to remove symlink {}", link_path.display())),
-            );
+            return Err(anyhow::Error::new(e)
+                .context(format!("Failed to remove symlink {}", link_path.display())));
         }
     }
 
@@ -106,31 +104,36 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
 
     // Remove template
     match fs::remove_file(&template_path) {
-        Ok(()) => println!("{} Removed template {}", "✓".green(), template_path.display()),
+        Ok(()) => println!(
+            "{} Removed template {}",
+            "✓".green(),
+            template_path.display()
+        ),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            return Err(
-                anyhow::Error::new(e)
-                    .context(format!("Failed to remove {}", template_path.display())),
-            );
+            return Err(anyhow::Error::new(e)
+                .context(format!("Failed to remove {}", template_path.display())));
         }
     }
 
     // Remove rendered output
     match fs::remove_file(&rendered_path) {
-        Ok(()) => println!("{} Removed rendered file {}", "✓".green(), rendered_path.display()),
+        Ok(()) => println!(
+            "{} Removed rendered file {}",
+            "✓".green(),
+            rendered_path.display()
+        ),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            return Err(
-                anyhow::Error::new(e)
-                    .context(format!("Failed to remove {}", rendered_path.display())),
-            );
+            return Err(anyhow::Error::new(e)
+                .context(format!("Failed to remove {}", rendered_path.display())));
         }
     }
 
     // Remove from .symlinks.toml
     symlinks.symlinks.remove(&config_name);
-    ctx.write_symlinks(&symlinks).context("Failed to update .symlinks.toml")?;
+    ctx.write_symlinks(&symlinks)
+        .context("Failed to update .symlinks.toml")?;
     println!("{} Removed from .symlinks.toml", "✓".green());
 
     println!();
@@ -162,7 +165,11 @@ mod tests {
             let dotfiles = tmp.path().join("dotfiles");
             std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
             let _home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
-            Env { _tmp: tmp, _home_guard, _lock }
+            Env {
+                _tmp: tmp,
+                _home_guard,
+                _lock,
+            }
         }
 
         fn dotfiles(&self) -> std::path::PathBuf {
@@ -178,7 +185,9 @@ mod tests {
     fn remove_unknown_config_errors() {
         let env = Env::new();
         let _ = &env;
-        let sf = SymlinksFile { symlinks: HashMap::new() };
+        let sf = SymlinksFile {
+            symlinks: HashMap::new(),
+        };
         let path = env.dotfiles().join(".symlinks.toml");
         std::fs::write(&path, toml::to_string_pretty(&sf).unwrap()).unwrap();
 

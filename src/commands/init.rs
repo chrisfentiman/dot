@@ -337,7 +337,11 @@ mod tests {
         std::fs::write(dotfiles.join(".symlinks.toml"), "[symlinks]\n").unwrap();
         std::fs::write(dotfiles.join(".secrets.toml"), "[secrets]\n").unwrap();
         let home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
-        InitEnv { _home_guard: home_guard, _tmp: tmp, _lock: lock }
+        InitEnv {
+            _home_guard: home_guard,
+            _tmp: tmp,
+            _lock: lock,
+        }
     }
 
     #[test]

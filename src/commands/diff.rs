@@ -132,7 +132,10 @@ mod tests {
     #[test]
     fn compute_diff_equal_inputs() {
         let result = compute_diff("a\nb\n", "a\nb\n");
-        assert!(!result.is_empty(), "equal inputs should still produce context lines");
+        assert!(
+            !result.is_empty(),
+            "equal inputs should still produce context lines"
+        );
         for line in &result {
             assert!(
                 line.starts_with("  "),

@@ -18,16 +18,25 @@ impl EnvGuard {
     /// Set an env var, returning a guard that restores the original value on drop.
     fn set(key: &str, val: &str) -> Self {
         let prev = std::env::var(key).ok();
-        unsafe { std::env::set_var(key, val); }
-        Self { key: key.to_string(), prev }
+        unsafe {
+            std::env::set_var(key, val);
+        }
+        Self {
+            key: key.to_string(),
+            prev,
+        }
     }
 }
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
         match &self.prev {
-            Some(v) => unsafe { std::env::set_var(&self.key, v); },
-            None => unsafe { std::env::remove_var(&self.key); },
+            Some(v) => unsafe {
+                std::env::set_var(&self.key, v);
+            },
+            None => unsafe {
+                std::env::remove_var(&self.key);
+            },
         }
     }
 }
@@ -204,7 +213,9 @@ fn render_and_symlink_all_re_render_updates_file() {
     assert_eq!(env.rendered("cfg"), "val = first");
 
     // Update the env var value and re-render — guard still alive, just overwrite
-    unsafe { std::env::set_var("_IT_UPDATE_VAL", "second"); }
+    unsafe {
+        std::env::set_var("_IT_UPDATE_VAL", "second");
+    }
     env.ctx.render_and_symlink_all().unwrap();
     assert_eq!(env.rendered("cfg"), "val = second");
 }
@@ -397,7 +408,8 @@ fn local_read_write_roundtrip() {
     let env = TestLocalEnv::new();
 
     let mut sf = dotf::dotfiles::SecretsFile::default();
-    sf.secrets.insert("KEY".to_string(), "env://KEY".to_string());
+    sf.secrets
+        .insert("KEY".to_string(), "env://KEY".to_string());
     env.ctx.write_secrets(&sf).unwrap();
     let loaded = env.ctx.read_secrets().unwrap();
     assert_eq!(loaded.secrets["KEY"], "env://KEY");

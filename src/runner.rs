@@ -81,7 +81,9 @@ impl Runner for SystemRunner {
                     out.status.signal().map_or(1, |sig| 128 + sig)
                 }
                 #[cfg(not(unix))]
-                { 1 }
+                {
+                    1
+                }
             }),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),

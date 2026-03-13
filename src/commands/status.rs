@@ -41,8 +41,9 @@ pub(crate) fn check_config_status(
                         return ConfigStatus::BrokenSymlink;
                     }
                     let dest_c = dest.canonicalize().unwrap_or(dest.clone());
-                    let expected_c =
-                        output_path.canonicalize().unwrap_or(output_path.to_path_buf());
+                    let expected_c = output_path
+                        .canonicalize()
+                        .unwrap_or(output_path.to_path_buf());
                     if dest_c == expected_c {
                         ConfigStatus::Ok
                     } else {
@@ -148,7 +149,11 @@ mod tests {
             let dotfiles = tmp.path().join("dotfiles");
             std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
             let _home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
-            Env { _tmp: tmp, _home_guard, _lock }
+            Env {
+                _tmp: tmp,
+                _home_guard,
+                _lock,
+            }
         }
 
         fn dotfiles(&self) -> std::path::PathBuf {
