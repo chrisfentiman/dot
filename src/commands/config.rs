@@ -59,6 +59,15 @@ pub fn run(path: Option<String>) -> Result<()> {
             continue;
         }
 
+        let match_count = content.matches(&secret_value).count();
+        if match_count > 1 {
+            println!(
+                "{} Value appears {} times in the file — all occurrences will be replaced",
+                "!".yellow(),
+                match_count
+            );
+        }
+
         let placeholder: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Placeholder name (e.g. GITHUB_EMAIL)")
             .validate_with(|input: &String| -> std::result::Result<(), &str> {
@@ -75,6 +84,13 @@ pub fn run(path: Option<String>) -> Result<()> {
             .with_prompt(
                 "Secret URI (e.g. pass://vault/item/field  op://vault/item/field  env://VAR)",
             )
+            .validate_with(|input: &String| -> std::result::Result<(), &str> {
+                if dotfiles::is_valid_secret_uri(input) {
+                    Ok(())
+                } else {
+                    Err("URI must start with pass://, op://, bw://, or env://")
+                }
+            })
             .interact_text()
             .context("Failed to read secret URI")?;
 

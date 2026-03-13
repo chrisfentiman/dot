@@ -141,6 +141,18 @@ fn validate() -> Result<()> {
 }
 
 fn add(name: String, uri: String) -> Result<()> {
+    if !dotfiles::is_valid_placeholder_name(&name) {
+        anyhow::bail!(
+            "Invalid placeholder name '{}': must be non-empty and contain only ASCII alphanumeric characters and underscores",
+            name
+        );
+    }
+    if !dotfiles::is_valid_secret_uri(&uri) {
+        anyhow::bail!(
+            "Invalid secret URI '{}': must start with pass://, op://, bw://, or env://",
+            uri
+        );
+    }
     let mut secrets = dotfiles::read_secrets()?;
     let existed = secrets.secrets.contains_key(&name);
     secrets.secrets.insert(name.clone(), uri.clone());
@@ -249,5 +261,20 @@ mod tests {
     fn validate_empty_secrets_returns_ok() {
         let _e = Env::new();
         validate().unwrap();
+    }
+
+    // ── add validation ──────────────────────────────────────────
+    #[test]
+    fn add_rejects_invalid_placeholder_name() {
+        let _e = Env::new();
+        let err = add("invalid-name".into(), "env://FOO".into()).unwrap_err();
+        assert!(err.to_string().contains("Invalid placeholder name"));
+    }
+
+    #[test]
+    fn add_rejects_invalid_uri_scheme() {
+        let _e = Env::new();
+        let err = add("FOO".into(), "https://example.com".into()).unwrap_err();
+        assert!(err.to_string().contains("Invalid secret URI"));
     }
 }
