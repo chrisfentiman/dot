@@ -23,7 +23,7 @@ pub fn is_valid_placeholder_name(name: &str) -> bool {
     !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-fn is_valid_secret_uri(uri: &str) -> bool {
+pub fn is_valid_secret_uri(uri: &str) -> bool {
     uri.starts_with("pass://")
         || uri.starts_with("op://")
         || uri.starts_with("bw://")
@@ -475,6 +475,7 @@ mod tests {
     // ── render_template ──────────────────────────────────────────
     #[test]
     fn render_template_substitutes_env_placeholders() {
+        let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "email = {{EMAIL}}\ntoken = {{TOKEN}}").unwrap();
@@ -533,6 +534,7 @@ mod tests {
 
     #[test]
     fn render_template_multiline_value() {
+        let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "key = {{VAL}}").unwrap();
@@ -553,6 +555,7 @@ mod tests {
 
     #[test]
     fn render_template_partial_secret_failure_reports_all() {
+        let _g = crate::env_lock();
         // One secret resolves, one doesn't — error should mention the failed one.
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
@@ -579,6 +582,7 @@ mod tests {
 
     #[test]
     fn render_template_skips_unreferenced_secrets() {
+        let _g = crate::env_lock();
         // Secret not referenced in template should not be fetched at all.
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
@@ -688,6 +692,7 @@ mod tests {
     // ── render_and_write ─────────────────────────────────────────
     #[test]
     fn render_and_write_creates_output_file() {
+        let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("cfg.tmpl");
         let out = tmp.path().join("cfg");
@@ -875,6 +880,7 @@ mod tests {
     // ── placeholder scanning ────────────────────────────────────
     #[test]
     fn render_template_handles_adjacent_placeholders() {
+        let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
         fs::write(&tmpl, "{{A}}{{B}}").unwrap();
@@ -899,6 +905,7 @@ mod tests {
 
     #[test]
     fn render_template_handles_unicode_around_placeholders() {
+        let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let tmpl = tmp.path().join("test.tmpl");
         // Multi-byte UTF-8 characters around placeholders
@@ -929,6 +936,7 @@ mod tests {
 
     #[test]
     fn render_template_three_sequential_placeholders() {
+        let _g = crate::env_lock();
         // Three adjacent placeholders — verifies scanner advances correctly
         // past each one. A broken search_from offset would miss the third.
         let tmp = TempDir::new().unwrap();
@@ -960,6 +968,7 @@ mod tests {
 
     #[test]
     fn render_template_placeholder_scanning_precise_offset() {
+        let _g = crate::env_lock();
         // Verify that after scanning {{X}}, the scanner starts AFTER the closing }},
         // not before it. Template: "{{X}}{{Y}}" — if scanner retreats, Y might be missed.
         let tmp = TempDir::new().unwrap();

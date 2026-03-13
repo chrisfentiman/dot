@@ -144,9 +144,8 @@ fn run_secret_cli(
         String::from_utf8(output.stdout)
             .map_err(|_| anyhow!("{friendly_name} output for {original_uri} is not valid UTF-8"))?,
     );
-    while value.ends_with('\n') || value.ends_with('\r') {
-        value.pop();
-    }
+    let trimmed_len = value.trim_end_matches(['\n', '\r']).len();
+    value.truncate(trimmed_len);
     Ok(value)
 }
 
@@ -166,7 +165,8 @@ fn fetch_pass_with(path: &str, original_uri: &str, runner: &dyn SecretRunner) ->
 fn fetch_op_with(path: &str, original_uri: &str, runner: &dyn SecretRunner) -> Result<Zeroizing<String>> {
     let full_uri = format!("op://{path}");
     // Forward only OP_SESSION_<account> and OP_SERVICE_ACCOUNT_TOKEN — the op CLI
-    // requires these for non-interactive auth.
+    // requires these for non-interactive auth. The length limit (≤40 total chars)
+    // and charset restriction prevent abuse via crafted env var names.
     let op_vars: Vec<(String, String)> = std::env::vars()
         .filter(|(k, _)| {
             k == "OP_SERVICE_ACCOUNT_TOKEN"
@@ -347,6 +347,7 @@ mod tests {
     // ── fetch: env backend ───────────────────────────────────────
     #[test]
     fn fetch_env_present() {
+        let _g = crate::env_lock();
         unsafe {
             std::env::set_var("_DOTF_TEST_SECRET", "hunter2");
         }
@@ -359,6 +360,7 @@ mod tests {
 
     #[test]
     fn fetch_env_missing_errors() {
+        let _g = crate::env_lock();
         unsafe {
             std::env::remove_var("_DOTF_TEST_MISSING_XYZ");
         }
