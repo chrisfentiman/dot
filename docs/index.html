@@ -984,6 +984,48 @@
   </div>
 </section>
 
+<!-- Project-local mode -->
+<section>
+  <div class="container fade">
+    <p class="sec-label">project-local mode</p>
+    <h2 class="sec-title">Same mechanism. Project scope.</h2>
+    <p class="sec-sub">The <code style="font-family:var(--mono);font-size:13px;background:var(--border);padding:2px 6px;border-radius:3px;">--dir</code> flag switches dotf from global dotfiles to project-scoped configs. Templates and URI mappings commit to your project repo. Rendered files with real values stay out.</p>
+
+    <div class="problem-body" style="margin-top:40px;">
+      <div class="problem-text">
+        <p class="problem-p">Every project has config files with secrets: <code>.env</code> with database credentials, <code>.claude/settings.json</code> with API keys, <code>docker-compose.override.yml</code> with registry tokens.</p>
+        <p class="problem-p">The usual fix? <strong>"Ask Sarah for the env file"</strong> in Slack. No schema, no validation, no way to know if your copy is stale. New contributors waste time chasing down values that could be fetched from a password manager in seconds.</p>
+        <p class="problem-p">dotf local mode commits the <em>shape</em> of your config (the template + URI mappings) so every contributor can render their own copy from their own password manager.</p>
+        <div class="problem-callout" style="margin-top:20px;">
+          <strong>Security boundary:</strong> In local mode, symlink targets must resolve within the project root. Absolute paths and <code>~</code> paths are rejected. A project's <code>.symlinks.toml</code> cannot write outside its own directory.
+        </div>
+      </div>
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-fname">project workflow</span>
+          <span class="code-badge badge-good">local mode</span>
+        </div>
+        <div class="code-body"><span class="t-cmt"># set up local mode in your project</span>
+<span class="t-muted">$</span> <span class="t-key">dotf --dir . init</span>
+
+<span class="t-cmt"># add .env with secrets extracted</span>
+<span class="t-muted">$</span> <span class="t-key">dotf --dir . config .env</span>
+
+<span class="t-cmt"># render templates (no git operations)</span>
+<span class="t-muted">$</span> <span class="t-key">dotf --dir . sync</span>
+
+<span class="t-cmt"># result:</span>
+<span class="t-muted">myproject/</span>
+  <span class="t-muted">.dotf/configs/</span>
+    <span class="t-val">.env.tmpl</span>         <span class="t-cmt">&larr; committed</span>
+    <span class="t-cmt">.env</span>              <span class="t-cmt">&larr; rendered, gitignored</span>
+  <span class="t-val">.secrets.toml</span>      <span class="t-cmt">&larr; URIs only</span>
+  <span class="t-muted">.env</span> &rarr; <span class="t-val">.dotf/configs/.env</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- Alternatives -->
 <section>
   <div class="container fade">
@@ -999,6 +1041,7 @@
             <th>Templates</th>
             <th>Secrets</th>
             <th>Symlinks</th>
+            <th>Project-local</th>
             <th>Runtime</th>
             <th>Learning curve</th>
           </tr>
@@ -1009,6 +1052,7 @@
             <td class="yes">{{VAR}} syntax</td>
             <td class="yes">Declarative .secrets.toml</td>
             <td class="yes">.symlinks.toml</td>
+            <td class="yes">--dir flag</td>
             <td>Rust binary</td>
             <td class="yes">Low</td>
           </tr>
@@ -1017,6 +1061,7 @@
             <td class="partial">Go text/template</td>
             <td class="partial">Embedded in templates</td>
             <td class="no">File copies</td>
+            <td class="no">--</td>
             <td>Go binary</td>
             <td class="partial">Medium-high</td>
           </tr>
@@ -1025,6 +1070,7 @@
             <td class="no">--</td>
             <td class="no">--</td>
             <td class="yes">Symlink farm</td>
+            <td class="no">--</td>
             <td>Perl</td>
             <td class="yes">Very low</td>
           </tr>
@@ -1032,6 +1078,7 @@
             <td class="tool-name">yadm</td>
             <td class="partial">Jinja2 (limited)</td>
             <td class="partial">Git-crypt (whole file)</td>
+            <td class="no">--</td>
             <td class="no">--</td>
             <td>Bash script</td>
             <td class="yes">Low</td>
@@ -1041,6 +1088,7 @@
             <td class="no">--</td>
             <td class="no">--</td>
             <td class="yes">YAML config</td>
+            <td class="no">--</td>
             <td>Python</td>
             <td class="yes">Low</td>
           </tr>
@@ -1049,6 +1097,7 @@
             <td class="partial">Nix expressions</td>
             <td class="partial">agenix/sops-nix</td>
             <td class="partial">Nix-managed</td>
+            <td class="no">--</td>
             <td>Nix</td>
             <td class="no">Very high</td>
           </tr>
@@ -1057,6 +1106,7 @@
             <td class="no">--</td>
             <td class="no">--</td>
             <td class="yes">Tag-based</td>
+            <td class="no">--</td>
             <td>Bash</td>
             <td class="yes">Low</td>
           </tr>

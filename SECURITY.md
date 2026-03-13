@@ -39,7 +39,7 @@ No ambient secrets (e.g., `AWS_SECRET_ACCESS_KEY`, `DATABASE_URL`) leak to passw
 
 **Template injection.** The template renderer uses a single-pass substitution algorithm. After replacing `{{PLACEHOLDER}}` with a secret value, the renderer does not re-scan the output for new placeholders. A secret value containing `{{OTHER_SECRET}}` is treated as literal text. This prevents a compromised password manager entry from exfiltrating other secrets.
 
-**Path traversal.** Symlink destinations are canonicalized and verified to be inside the root directory (`$HOME` in global mode, the project root in `--dir` mode). Path components containing `..` are rejected. In local mode, absolute paths and tilde (`~`) paths in symlink targets are rejected entirely.
+**Path traversal.** Symlink destinations are canonicalized and verified to be inside the root directory (`$HOME` in global mode, the project root in `--dir` mode). Path components containing `..` are rejected. In local mode (`--dir`), absolute paths and tilde (`~`) paths in symlink targets are rejected entirely — this prevents a project's `.symlinks.toml` from writing files outside the project directory. The security boundary for local mode is the project root, not `$HOME`.
 
 **Symlink clobbering.** `ensure_symlink` refuses to overwrite regular files. Only existing symlinks are replaced, and replacement is atomic (create temp symlink, then rename). This prevents a malicious `.symlinks.toml` entry from overwriting arbitrary files.
 
@@ -63,3 +63,12 @@ No ambient secrets (e.g., `AWS_SECRET_ACCESS_KEY`, `DATABASE_URL`) leak to passw
 **Side-channel attacks.** dotf does not implement constant-time comparison or other side-channel mitigations. This is appropriate for a local CLI tool that never handles authentication or key exchange directly.
 
 **Denial of service via `.secrets.toml`.** A malicious `.secrets.toml` (e.g., from a compromised git remote) could reference URIs that cause password manager CLIs to hang or prompt repeatedly. dotf does not currently impose timeouts on subprocess execution.
+
+### Local mode (`--dir`) security
+
+When used with `--dir`, dotf operates in project-local mode with a tighter security boundary:
+
+- **Root directory is the project, not `$HOME`.** All symlink targets must resolve within the project root. A project cannot write to `~/.ssh/config` or `/etc/anything`.
+- **Absolute paths rejected.** Symlink targets in `.symlinks.toml` must be relative paths. Absolute paths and `~`-prefixed paths are rejected during resolution.
+- **No git operations.** `dotf --dir . sync` renders templates and creates symlinks but does not run `git pull`, `git add`, `git commit`, or `git push`. The project's own git workflow is not affected.
+- **Cloned repos.** When you clone a project that uses dotf local mode, the `.dotf/configs/*.tmpl` templates and `.secrets.toml` URI mappings are visible in the repo. Running `dotf --dir . sync` will attempt to fetch secrets from your local password manager using those URIs. Verify that the URIs are reasonable before running sync on an untrusted repo — a malicious URI could cause your password manager CLI to be invoked with attacker-controlled arguments.

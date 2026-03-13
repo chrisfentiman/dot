@@ -2,7 +2,7 @@
 
 Your dotfiles belong in git. Your secrets don't.
 
-`dotf` is a single Rust binary that manages dotfiles with template rendering and pluggable secret injection. Templates go in git, secret values stay in your password manager. On any machine, `dotf sync` fetches the secrets, renders the templates, and symlinks the real files into place.
+`dotf` is a single Rust binary that manages dotfiles with template rendering and pluggable secret injection. Templates go in git, secret values stay in your password manager. Works at two scales: global dotfiles (`~/dotfiles`) synced across machines, and project-local configs (`.env`, `.claude/settings.json`) scoped to a single repo via `--dir`.
 
 ```sh
 brew tap chrisfentiman/dotf && brew install dotf
@@ -14,17 +14,19 @@ You built a good shell setup. You want to version it, share it, clone it on a ne
 
 The usual fix is a `.localrc` or `.bash_profile_priv` -- a file you source but never commit. It works on one machine. On a new machine you spend an hour with your old laptop open next to it, manually copying values. Nothing documents what secrets are needed or where they came from.
 
+The same problem exists at the project level. Your `.env` has database credentials, your `.claude/settings.json` has API keys, your `docker-compose.override.yml` has registry tokens. You can't commit them, so every new contributor gets a Slack message: "ask Sarah for the env file." There's no schema, no validation, no way to know if your `.env` is stale.
+
 Existing dotfiles tools solve one piece but not the whole problem:
 
-| Tool | Templates | Secrets | Symlinks | The catch |
-|------|:---------:|:-------:|:--------:|-----------|
-| **GNU Stow** | -- | -- | Symlink farm | No templating or secrets. Machine-specific configs require external scripts. |
-| **yadm** | Minimal | Git-crypt (whole-file) | -- | Alternate files are full copies per machine, not variable substitution. No runtime secret injection from password managers. |
-| **dotbot** | -- | -- | YAML-driven | Just a symlink + shell runner. Requires Python runtime. |
-| **rcm** | -- | -- | Tag-based | No templates, no secrets, no encryption. Unix only, low activity. |
-| **chezmoi** | Go `text/template` | GPG/age + PM integrations | -- (copies) | Most powerful option, but secrets are embedded in template syntax: `{{ (bitwarden "item").password }}`. Steep learning curve with source/target state model and filename-prefix attributes. |
-| **home-manager** | Nix expressions | agenix/sops-nix | Nix-managed | Requires learning Nix. Overkill if you just need config files with a few secrets. |
-| **dotf** | `{{PLACEHOLDER}}` | Declarative `.secrets.toml` | `.symlinks.toml` | -- |
+| Tool | Templates | Secrets | Symlinks | Project-local | The catch |
+|------|:---------:|:-------:|:--------:|:-------------:|-----------|
+| **GNU Stow** | -- | -- | Symlink farm | -- | No templating or secrets. Machine-specific configs require external scripts. |
+| **yadm** | Minimal | Git-crypt (whole-file) | -- | -- | Alternate files are full copies per machine, not variable substitution. No runtime secret injection. |
+| **dotbot** | -- | -- | YAML-driven | -- | Just a symlink + shell runner. Requires Python runtime. |
+| **rcm** | -- | -- | Tag-based | -- | No templates, no secrets, no encryption. Unix only, low activity. |
+| **chezmoi** | Go `text/template` | GPG/age + PM integrations | -- (copies) | -- | Secrets embedded in template syntax. Steep learning curve. |
+| **home-manager** | Nix expressions | agenix/sops-nix | Nix-managed | -- | Requires learning Nix. Overkill for config files. |
+| **dotf** | `{{PLACEHOLDER}}` | Declarative `.secrets.toml` | `.symlinks.toml` | `--dir` | -- |
 
 dotf fixes this by making the secrets part of the repo -- not their *values*, their *locations*. Every secret becomes a placeholder that maps to a URI in your password manager. At sync time, dotf fetches and injects them. Git only ever sees the template.
 
@@ -126,17 +128,41 @@ Backends are pluggable -- adding a new one is a single match arm in `src/secret.
 | `dotf secrets remove <name>` | Remove a secret mapping |
 | `dotf completions <shell>` | Print shell completions (bash, zsh, fish) |
 
-### Project-local mode
+## Project-local mode
 
-Use `--dir <path>` to manage project-scoped dotfiles (`.env`, `.claude/settings.json`, etc.):
+The `--dir` flag switches dotf from managing global dotfiles (`~/dotfiles`) to managing project-scoped configs. Same template + secret mechanism, scoped to a single repo.
 
 ```sh
-dotf --dir . init          # creates .dotf/ in current directory
-dotf --dir . config .env   # template + secrets for project .env
-dotf --dir . sync          # render only, no git operations
+cd ~/Development/myproject
+dotf --dir . init            # creates .dotf/ directory
+dotf --dir . config .env     # template + secrets for .env
+dotf --dir . sync            # render only, no git operations
 ```
 
+The `.env.tmpl` template and `.secrets.toml` are committed to your project repo. The rendered `.env` (with real values) is gitignored. New contributors clone the repo, run `dotf --dir . sync`, and get a working `.env` without Slack messages or shared password docs.
+
+```
+myproject/
+  .dotf/
+    configs/
+      .env.tmpl                <-- committed
+      .env                     <-- rendered, gitignored
+    .secrets.toml              <-- committed (URIs only)
+    .symlinks.toml             <-- committed
+  .env -> .dotf/configs/.env   <-- symlink to rendered file
+```
+
+**Key differences from global mode:**
+- No git operations in `sync` -- your project repo handles its own git workflow
+- Symlink targets are relative to the project root, not `$HOME`
+- Absolute paths and `~` paths in symlink targets are rejected (security boundary is the project root)
+- `.dotf/configs/*` (except `.tmpl`) and `.dotf/.secrets.toml` are added to `.gitignore` automatically
+
+This is useful for any project config that has secrets: `.env`, `.claude/settings.json`, `docker-compose.override.yml`, `.cargo/config.toml`, CI credential files.
+
 ## File layout
+
+### Global (`~/dotfiles`)
 
 ```
 ~/dotfiles/
@@ -152,6 +178,19 @@ dotf --dir . sync          # render only, no git operations
 ```
 
 `~/.gitconfig` is a symlink to `~/dotfiles/configs/.gitconfig`, which is rendered from `.gitconfig.tmpl` at sync time.
+
+### Local (`--dir .`)
+
+```
+myproject/
+  .dotf/
+    configs/
+      .env.tmpl         <-- template, committed
+      .env              <-- rendered, gitignored
+    .secrets.toml       <-- placeholder -> URI map, committed
+    .symlinks.toml      <-- name -> target path map, committed
+  .env                  <-- symlink to .dotf/configs/.env
+```
 
 ## Security
 
@@ -177,6 +216,7 @@ dotf is for the common case: config files with some secrets that you want in git
 | **Secrets in templates** | Embedded: `{{ (bitwarden "item").password }}` | Separated: template says `{{DB_PASS}}`, `.secrets.toml` maps it to `bw://db/password` |
 | **Switch password managers** | Edit every template that references the old backend | Change one line in `.secrets.toml` |
 | **File management** | Copies files from source to target | Symlinks to rendered files |
+| **Project-local configs** | Global only (`~/.local/share/chezmoi`) | `--dir .` for per-project `.env`, `.claude/settings.json`, etc. |
 | **Secret auditing** | Manual | `dotf secrets list` and `dotf secrets validate` |
 | **Concepts to learn** | Source state, target state, filename attributes (`dot_`, `private_`, `run_once_`, `modify_`) | Two TOML files and `{{PLACEHOLDER}}` syntax |
 | **Runtime** | Go binary | Rust binary |
