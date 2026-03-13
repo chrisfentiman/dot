@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-tempfile = "3"
+toml = "0.8"
 
 [dependencies.dotf]
 package = "dot"
@@ -43,6 +43,22 @@ bench = false
 [[bin]]
 name = "fuzz_diff"
 path = "fuzz_targets/fuzz_diff.rs"
+test = false
+doc = false
+bench = false
+
+# fuzz_resolve_symlink: fuzz symlink target resolution and path traversal checks
+[[bin]]
+name = "fuzz_resolve_symlink"
+path = "fuzz_targets/fuzz_resolve_symlink.rs"
+test = false
+doc = false
+bench = false
+
+# fuzz_toml_parse: fuzz TOML deserialization for secrets and symlinks files
+[[bin]]
+name = "fuzz_toml_parse"
+path = "fuzz_targets/fuzz_toml_parse.rs"
 test = false
 doc = false
 bench = false

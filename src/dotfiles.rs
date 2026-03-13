@@ -260,12 +260,20 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
     let content = fs::read_to_string(template_path)
         .with_context(|| format!("Failed to read template {}", template_path.display()))?;
 
+    render_template_str(&content, secrets)
+        .with_context(|| format!("Failed to render template {}", template_path.display()))
+}
+
+/// Render a template from an in-memory string. This is the core single-pass
+/// renderer, separated from `render_template` so it can be called without
+/// file I/O (e.g. from fuzz targets).
+pub fn render_template_str(content: &str, secrets: &SecretsFile) -> Result<String> {
     // ── Phase 1: scan for referenced placeholder names ───────────────────
     // Single left-to-right pass over the template. Both `{{` and `}}` are
     // ASCII, so byte-level `str::find` is correct even with multi-byte UTF-8.
     let referenced: std::collections::HashSet<&str> = {
         let mut set = std::collections::HashSet::new();
-        let mut rest = content.as_str();
+        let mut rest = content;
         while let Some(open) = rest.find("{{") {
             let after_open = &rest[open + 2..];
             if let Some(close) = after_open.find("}}") {
@@ -310,7 +318,7 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
     // re-scanned, so a secret value containing `{{OTHER}}` is emitted
     // verbatim — no cross-secret injection or order-dependent corruption.
     let mut result = String::with_capacity(content.len());
-    let mut rest = content.as_str();
+    let mut rest = content;
     let mut missing: Vec<String> = Vec::new();
     let mut missing_set: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -345,11 +353,7 @@ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<St
             .map(|n| format!("{{{{{n}}}}}"))
             .collect::<Vec<_>>()
             .join(", ");
-        anyhow::bail!(
-            "Template {} contains unreplaced placeholder(s): {}",
-            template_path.display(),
-            list
-        );
+        anyhow::bail!("Template contains unreplaced placeholder(s): {list}");
     }
 
     // `fetched` drops here; each Zeroizing<String> zeroes on drop.
@@ -655,11 +659,12 @@ mod tests {
         };
 
         let err = render_template(&tmpl, &secrets).unwrap_err();
+        let msg = format!("{err:#}");
         assert!(
-            err.to_string().contains("BAD"),
-            "error should name the failed secret"
+            msg.contains("BAD"),
+            "error should name the failed secret: {msg}"
         );
-        assert!(err.to_string().contains("1 secret(s)"));
+        assert!(msg.contains("1 secret(s)"));
     }
 
     #[test]

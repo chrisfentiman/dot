@@ -265,7 +265,7 @@ version = "0.0.0"
 dependencies = [
  "dot",
  "libfuzzer-sys",
- "tempfile",
+ "toml",
 ]
 
 [[package]]
