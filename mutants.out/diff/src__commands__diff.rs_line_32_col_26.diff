@@ -1,0 +1,21 @@
+--- src/commands/diff.rs
++++ replace == with != in run
+@@ -24,17 +24,17 @@
+             names.sort();
+             names.insert(0, "(all)".to_string());
+             let selection = Select::with_theme(&ColorfulTheme::default())
+                 .with_prompt("Select config to diff (or all)")
+                 .items(&names)
+                 .default(0)
+                 .interact()
+                 .context("Failed to read selection")?;
+-            if selection == 0 {
++            if selection != /* ~ changed by cargo-mutants ~ */ 0 {
+                 // all — remove the "(all)" sentinel
+                 names.into_iter().skip(1).collect()
+             } else {
+                 vec![names[selection].clone()]
+             }
+         }
+     };
+ 

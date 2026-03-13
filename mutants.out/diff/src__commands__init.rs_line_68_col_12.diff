@@ -1,0 +1,21 @@
+--- src/commands/init.rs
++++ delete ! in setup_dotfiles_dir
+@@ -60,17 +60,17 @@
+         fs::create_dir_all(&dotfiles)
+             .with_context(|| format!("Failed to create {}", dotfiles.display()))?;
+ 
+         let init_status = Command::new("git")
+             .args(["init", "-b", "main"])
+             .current_dir(&dotfiles)
+             .status()
+             .context("Failed to run git init")?;
+-        if !init_status.success() {
++        if  /* ~ changed by cargo-mutants ~ */init_status.success() {
+             Command::new("git")
+                 .args(["init"])
+                 .current_dir(&dotfiles)
+                 .status()
+                 .context("Failed to run git init")?;
+         }
+ 
+         fs::create_dir_all(dotfiles.join("configs")).context("Failed to create configs dir")?;

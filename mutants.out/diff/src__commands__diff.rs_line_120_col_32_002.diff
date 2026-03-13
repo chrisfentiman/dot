@@ -1,0 +1,21 @@
+--- src/commands/diff.rs
++++ replace < with <= in compute_diff
+@@ -112,17 +112,17 @@
+ 
+ /// Returns a human-readable diff of two line slices.
+ /// Exposed `pub` so fuzz targets and tests can call it without going through I/O.
+ pub fn compute_diff(old: &[&str], new: &[&str]) -> Vec<String> {
+     let mut out = Vec::new();
+     let mut oi = 0usize;
+     let mut ni = 0usize;
+ 
+-    while oi < old.len() || ni < new.len() {
++    while oi < old.len() || ni <= /* ~ changed by cargo-mutants ~ */ new.len() {
+         if oi < old.len() && ni < new.len() && old[oi] == new[ni] {
+             out.push(format!("  {}", old[oi]));
+             oi += 1;
+             ni += 1;
+         } else {
+             let lookahead = 4;
+             let mut matched = false;
+             for delta in 1..=lookahead {

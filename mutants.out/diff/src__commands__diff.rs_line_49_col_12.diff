@@ -1,0 +1,21 @@
+--- src/commands/diff.rs
++++ delete ! in run
+@@ -41,17 +41,17 @@
+     let secrets = dotfiles::read_secrets()?;
+     let configs_dir = dotfiles::configs_dir()?;
+     let mut any_diff = false;
+ 
+     for config_name in &names_to_diff {
+         let template_path = configs_dir.join(format!("{config_name}.tmpl"));
+         let rendered_path = configs_dir.join(config_name);
+ 
+-        if !template_path.exists() {
++        if  /* ~ changed by cargo-mutants ~ */template_path.exists() {
+             println!(
+                 "{} {}: template not found, skipping",
+                 "!".yellow(),
+                 config_name.cyan()
+             );
+             continue;
+         }
+ 

@@ -1,0 +1,21 @@
+--- src/dotfiles.rs
++++ delete ! in read_secrets
+@@ -42,17 +42,17 @@
+ }
+ 
+ pub fn symlinks_toml_path() -> Result<PathBuf> {
+     Ok(dotfiles_dir()?.join(".symlinks.toml"))
+ }
+ 
+ pub fn read_secrets() -> Result<SecretsFile> {
+     let path = secrets_toml_path()?;
+-    if !path.exists() {
++    if  /* ~ changed by cargo-mutants ~ */path.exists() {
+         return Ok(SecretsFile::default());
+     }
+     let content =
+         fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+     toml::from_str(&content).with_context(|| "Failed to parse .secrets.toml")
+ }
+ 
+ pub fn write_secrets(secrets: &SecretsFile) -> Result<()> {

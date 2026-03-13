@@ -1,0 +1,21 @@
+--- src/commands/sync.rs
++++ delete ! in run
+@@ -80,17 +80,17 @@
+ 
+     let commit_output = Command::new("git")
+         .args(["commit", "-m", &commit_msg])
+         .current_dir(&dotfiles_dir)
+         .output()
+         .context("Failed to run git commit")?;
+ 
+     let commit_stdout = String::from_utf8_lossy(&commit_output.stdout);
+-    if commit_stdout.contains("nothing to commit") || !commit_output.status.success() {
++    if commit_stdout.contains("nothing to commit") ||  /* ~ changed by cargo-mutants ~ */commit_output.status.success() {
+         println!("{} Nothing new to commit", "·".dimmed());
+     } else {
+         println!("{} Committed: {}", "✓".green(), commit_msg);
+ 
+         let push_output = Command::new("git")
+             .args(["push"])
+             .current_dir(&dotfiles_dir)
+             .output()

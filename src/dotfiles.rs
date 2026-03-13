@@ -165,6 +165,23 @@ pub fn ensure_symlink(target: &Path, link: &Path) -> Result<()> {
     }
 }
 
+/// Exposed for testing only — splits bw URI into (item, subcommand).
+#[cfg(test)]
+pub fn _bw_parse(path: &str) -> (&str, &str) {
+    match path.rsplit_once('/') {
+        Some((item, field)) => {
+            let sub = match field {
+                "username" => "username",
+                "notes" => "notes",
+                "uri" => "uri",
+                _ => "password",
+            };
+            (item, sub)
+        }
+        None => (path, "password"),
+    }
+}
+
 pub fn render_and_symlink_all() -> Result<Vec<String>> {
     let secrets = read_secrets()?;
     let symlinks = read_symlinks()?;
@@ -191,4 +208,186 @@ pub fn render_and_symlink_all() -> Result<Vec<String>> {
     }
 
     Ok(done)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
+    // ── expand_tilde ─────────────────────────────────────────────
+    #[test]
+    fn expand_tilde_plain_path() {
+        let p = expand_tilde("/etc/hosts").unwrap();
+        assert_eq!(p, PathBuf::from("/etc/hosts"));
+    }
+
+    #[test]
+    fn expand_tilde_tilde_only() {
+        let p = expand_tilde("~").unwrap();
+        assert_eq!(p, dirs::home_dir().unwrap());
+    }
+
+    #[test]
+    fn expand_tilde_tilde_slash() {
+        let p = expand_tilde("~/.gitconfig").unwrap();
+        assert_eq!(p, dirs::home_dir().unwrap().join(".gitconfig"));
+    }
+
+    #[test]
+    fn expand_tilde_nested_path() {
+        let p = expand_tilde("~/.config/mise/config.toml").unwrap();
+        assert_eq!(
+            p,
+            dirs::home_dir().unwrap().join(".config/mise/config.toml")
+        );
+    }
+
+    #[test]
+    fn expand_tilde_no_tilde() {
+        let p = expand_tilde("relative/path").unwrap();
+        assert_eq!(p, PathBuf::from("relative/path"));
+    }
+
+    // ── render_template ──────────────────────────────────────────
+    #[test]
+    fn render_template_substitutes_env_placeholders() {
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        fs::write(&tmpl, "email = {{EMAIL}}\ntoken = {{TOKEN}}").unwrap();
+
+        unsafe { std::env::set_var("_DOTF_T_EMAIL", "chris@example.com"); }
+        unsafe { std::env::set_var("_DOTF_T_TOKEN", "abc123"); }
+
+        let secrets = SecretsFile {
+            secrets: HashMap::from([
+                ("EMAIL".to_string(), "env://_DOTF_T_EMAIL".to_string()),
+                ("TOKEN".to_string(), "env://_DOTF_T_TOKEN".to_string()),
+            ]),
+        };
+
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "email = chris@example.com\ntoken = abc123");
+
+        unsafe { std::env::remove_var("_DOTF_T_EMAIL"); }
+        unsafe { std::env::remove_var("_DOTF_T_TOKEN"); }
+    }
+
+    #[test]
+    fn render_template_unknown_placeholder_renders_empty() {
+        // handlebars in non-strict mode renders missing keys as empty string
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        fs::write(&tmpl, "name = {{MISSING}}").unwrap();
+
+        let secrets = SecretsFile::default();
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "name = ");
+    }
+
+    #[test]
+    fn render_template_no_placeholders_is_identity() {
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        let content = "[core]\n  editor = nvim\n  autocrlf = input\n";
+        fs::write(&tmpl, content).unwrap();
+
+        let rendered = render_template(&tmpl, &SecretsFile::default()).unwrap();
+        assert_eq!(rendered, content);
+    }
+
+    #[test]
+    fn render_template_multiline_value() {
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("test.tmpl");
+        fs::write(&tmpl, "key = {{VAL}}").unwrap();
+
+        unsafe { std::env::set_var("_DOTF_T_VAL", "line1\nline2"); }
+        let secrets = SecretsFile {
+            secrets: HashMap::from([("VAL".to_string(), "env://_DOTF_T_VAL".to_string())]),
+        };
+
+        let rendered = render_template(&tmpl, &secrets).unwrap();
+        assert_eq!(rendered, "key = line1\nline2");
+        unsafe { std::env::remove_var("_DOTF_T_VAL"); }
+    }
+
+    // ── ensure_symlink ───────────────────────────────────────────
+    #[cfg(unix)]
+    #[test]
+    fn ensure_symlink_creates_link() {
+        let tmp = TempDir::new().unwrap();
+        let target = tmp.path().join("rendered.conf");
+        let link = tmp.path().join("link.conf");
+
+        fs::write(&target, "contents").unwrap();
+        ensure_symlink(&target, &link).unwrap();
+
+        assert!(link.symlink_metadata().is_ok());
+        assert_eq!(fs::read_link(&link).unwrap(), target);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_symlink_noop_if_already_correct() {
+        let tmp = TempDir::new().unwrap();
+        let target = tmp.path().join("rendered.conf");
+        let link = tmp.path().join("link.conf");
+
+        fs::write(&target, "contents").unwrap();
+        ensure_symlink(&target, &link).unwrap();
+        // Call again — should not error
+        ensure_symlink(&target, &link).unwrap();
+        assert_eq!(fs::read_link(&link).unwrap(), target);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_symlink_replaces_stale_link() {
+        let tmp = TempDir::new().unwrap();
+        let old_target = tmp.path().join("old.conf");
+        let new_target = tmp.path().join("new.conf");
+        let link = tmp.path().join("link.conf");
+
+        fs::write(&old_target, "old").unwrap();
+        fs::write(&new_target, "new").unwrap();
+
+        ensure_symlink(&old_target, &link).unwrap();
+        assert_eq!(fs::read_link(&link).unwrap(), old_target);
+
+        ensure_symlink(&new_target, &link).unwrap();
+        assert_eq!(fs::read_link(&link).unwrap(), new_target);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_symlink_creates_parent_dirs() {
+        let tmp = TempDir::new().unwrap();
+        let target = tmp.path().join("rendered.conf");
+        let link = tmp.path().join("deep/nested/dir/link.conf");
+
+        fs::write(&target, "contents").unwrap();
+        ensure_symlink(&target, &link).unwrap();
+        assert!(link.symlink_metadata().is_ok());
+    }
+
+    // ── render_and_write ─────────────────────────────────────────
+    #[test]
+    fn render_and_write_creates_output_file() {
+        let tmp = TempDir::new().unwrap();
+        let tmpl = tmp.path().join("cfg.tmpl");
+        let out = tmp.path().join("cfg");
+
+        unsafe { std::env::set_var("_DOTF_T_HOST", "myhost"); }
+        fs::write(&tmpl, "host = {{HOST}}").unwrap();
+
+        let secrets = SecretsFile {
+            secrets: HashMap::from([("HOST".to_string(), "env://_DOTF_T_HOST".to_string())]),
+        };
+
+        render_and_write(&tmpl, &out, &secrets).unwrap();
+        assert_eq!(fs::read_to_string(&out).unwrap(), "host = myhost");
+        unsafe { std::env::remove_var("_DOTF_T_HOST"); }
+    }
 }

@@ -1,0 +1,21 @@
+--- src/commands/diff.rs
++++ replace += with -= in compute_diff
+@@ -133,17 +133,17 @@
+                     ni += delta;
+                     matched = true;
+                     break;
+                 }
+                 if oi + delta < old.len() && ni < new.len() && old[oi + delta] == new[ni] {
+                     for line in &old[oi..oi + delta] {
+                         out.push(format!("- {line}"));
+                     }
+-                    oi += delta;
++                    oi -= /* ~ changed by cargo-mutants ~ */ delta;
+                     matched = true;
+                     break;
+                 }
+             }
+             if !matched {
+                 if oi < old.len() {
+                     out.push(format!("- {}", old[oi]));
+                     oi += 1;

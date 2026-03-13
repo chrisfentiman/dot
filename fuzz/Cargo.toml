@@ -1,0 +1,47 @@
+[package]
+name = "dot-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tempfile = "3"
+
+[dependencies.dot]
+path = ".."
+
+# fuzz_uri_dispatch: fuzz secret::fetch URI parsing and routing
+[[bin]]
+name = "fuzz_uri_dispatch"
+path = "fuzz_targets/fuzz_uri_dispatch.rs"
+test = false
+doc = false
+bench = false
+
+# fuzz_template_render: fuzz handlebars template rendering with arbitrary content
+[[bin]]
+name = "fuzz_template_render"
+path = "fuzz_targets/fuzz_template_render.rs"
+test = false
+doc = false
+bench = false
+
+# fuzz_expand_tilde: fuzz path expansion with arbitrary strings
+[[bin]]
+name = "fuzz_expand_tilde"
+path = "fuzz_targets/fuzz_expand_tilde.rs"
+test = false
+doc = false
+bench = false
+
+# fuzz_diff: fuzz the line-by-line diff algorithm with arbitrary text pairs
+[[bin]]
+name = "fuzz_diff"
+path = "fuzz_targets/fuzz_diff.rs"
+test = false
+doc = false
+bench = false

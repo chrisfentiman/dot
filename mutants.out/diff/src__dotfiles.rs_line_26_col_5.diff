@@ -1,0 +1,21 @@
+--- src/dotfiles.rs
++++ replace configs_dir -> Result<PathBuf> with Ok(Default::default())
+@@ -18,17 +18,17 @@
+ }
+ 
+ pub fn dotfiles_dir() -> Result<PathBuf> {
+     let home = dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
+     Ok(home.join("dotfiles"))
+ }
+ 
+ pub fn configs_dir() -> Result<PathBuf> {
+-    Ok(dotfiles_dir()?.join("configs"))
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn expand_tilde(path: &str) -> Result<PathBuf> {
+     if let Some(rest) = path.strip_prefix("~/") {
+         let home = dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
+         Ok(home.join(rest))
+     } else if path == "~" {
+         dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))

@@ -1,0 +1,21 @@
+--- src/commands/init.rs
++++ replace && with || in hint_secret_backends
+@@ -137,17 +137,17 @@
+         } else if uri.starts_with("op://") {
+             needs_op = true;
+         } else if uri.starts_with("bw://") {
+             needs_bw = true;
+         }
+     }
+ 
+     // If no secrets configured yet, nothing to check
+-    if !needs_pass && !needs_op && !needs_bw {
++    if !needs_pass || /* ~ changed by cargo-mutants ~ */ !needs_op && !needs_bw {
+         println!(
+             "{} No secret backends configured yet — add secrets with {}",
+             "·".dimmed(),
+             "dotf secrets add".cyan()
+         );
+         return Ok(());
+     }
+ 

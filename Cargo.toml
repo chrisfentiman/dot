@@ -5,6 +5,10 @@ edition = "2024"
 description = "Dotfiles manager with pluggable secret injection (pass, op, bw, env)"
 license = "MIT"
 
+[lib]
+name = "dot"
+path = "src/lib.rs"
+
 [[bin]]
 name = "dot"
 path = "src/main.rs"
@@ -24,7 +28,15 @@ dialoguer = "0.11"
 which = "6"
 chrono = "0.4"
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.release]
 opt-level = 3
 lto = true
 strip = true
+
+[profile.fuzz]
+inherits = "dev"
+opt-level = 1
+debug = true

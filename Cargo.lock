@@ -350,6 +350,7 @@ dependencies = [
  "handlebars",
  "serde",
  "serde_json",
+ "tempfile",
  "toml",
  "walkdir",
  "which",

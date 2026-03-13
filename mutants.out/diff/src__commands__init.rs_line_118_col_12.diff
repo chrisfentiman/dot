@@ -1,0 +1,21 @@
+--- src/commands/init.rs
++++ delete ! in setup_dotfiles_dir
+@@ -110,17 +110,17 @@
+             );
+         }
+     } else {
+         println!("Cloning {}...", url);
+         let clone_status = Command::new("git")
+             .args(["clone", &url, dotfiles.to_str().unwrap()])
+             .status()
+             .context("Failed to run git clone")?;
+-        if !clone_status.success() {
++        if  /* ~ changed by cargo-mutants ~ */clone_status.success() {
+             anyhow::bail!("git clone failed");
+         }
+         println!("{} Cloned dotfiles to {}", "✓".green(), dotfiles.display());
+     }
+ 
+     Ok(())
+ }
+ 

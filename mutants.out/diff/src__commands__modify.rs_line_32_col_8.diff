@@ -1,0 +1,21 @@
+--- src/commands/modify.rs
++++ delete ! in run
+@@ -24,17 +24,17 @@
+                 .context("Failed to read selection")?;
+             names[selection].clone()
+         }
+     };
+ 
+     let configs_dir = dotfiles::configs_dir()?;
+     let template_path = configs_dir.join(format!("{config_name}.tmpl"));
+ 
+-    if !template_path.exists() {
++    if  /* ~ changed by cargo-mutants ~ */template_path.exists() {
+         anyhow::bail!("Template not found: {}", template_path.display());
+     }
+ 
+     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+     let status = Command::new(&editor)
+         .arg(&template_path)
+         .status()
+         .with_context(|| format!("Failed to open editor: {editor}"))?;

@@ -1,0 +1,21 @@
+--- src/dotfiles.rs
++++ replace fetch_secret -> Result<String> with Ok("xyzzy".into())
+@@ -75,17 +75,17 @@
+ pub fn write_symlinks(symlinks: &SymlinksFile) -> Result<()> {
+     let path = symlinks_toml_path()?;
+     let content =
+         toml::to_string_pretty(symlinks).with_context(|| "Failed to serialize .symlinks.toml")?;
+     fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))
+ }
+ 
+ pub fn fetch_secret(uri: &str) -> Result<String> {
+-    secret::fetch(uri)
++    Ok("xyzzy".into()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<String> {
+     let template_content = fs::read_to_string(template_path)
+         .with_context(|| format!("Failed to read template {}", template_path.display()))?;
+ 
+     let mut hbs = Handlebars::new();
+     hbs.set_strict_mode(false);

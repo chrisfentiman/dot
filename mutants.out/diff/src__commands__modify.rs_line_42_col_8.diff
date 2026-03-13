@@ -1,0 +1,21 @@
+--- src/commands/modify.rs
++++ delete ! in run
+@@ -34,17 +34,17 @@
+     }
+ 
+     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+     let status = Command::new(&editor)
+         .arg(&template_path)
+         .status()
+         .with_context(|| format!("Failed to open editor: {editor}"))?;
+ 
+-    if !status.success() {
++    if  /* ~ changed by cargo-mutants ~ */status.success() {
+         anyhow::bail!("Editor exited with non-zero status");
+     }
+ 
+     let secrets = dotfiles::read_secrets()?;
+     let output_path = configs_dir.join(&config_name);
+     dotfiles::render_and_write(&template_path, &output_path, &secrets)
+         .with_context(|| format!("Failed to re-render {config_name}"))?;
+     println!("{} Re-rendered {}", "✓".green(), config_name);

@@ -1,0 +1,21 @@
+--- src/commands/status.rs
++++ delete ! in run
+@@ -35,17 +35,17 @@
+ 
+     let mut entries: Vec<_> = symlinks.symlinks.iter().collect();
+     entries.sort_by_key(|(k, _)| k.as_str());
+ 
+     for (name, target_str) in entries {
+         let template_path = configs_dir.join(format!("{name}.tmpl"));
+         let output_path = configs_dir.join(name);
+ 
+-        let status = if !template_path.exists() {
++        let status = if  /* ~ changed by cargo-mutants ~ */template_path.exists() {
+             ConfigStatus::MissingTemplate
+         } else {
+             match dotfiles::expand_tilde(target_str) {
+                 Err(_) => ConfigStatus::MissingSymlink,
+                 Ok(link_path) => {
+                     if link_path.symlink_metadata().is_err() {
+                         ConfigStatus::MissingSymlink
+                     } else {

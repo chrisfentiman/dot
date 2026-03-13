@@ -1,0 +1,21 @@
+--- src/dotfiles.rs
++++ replace secrets_toml_path -> Result<PathBuf> with Ok(Default::default())
+@@ -33,17 +33,17 @@
+     } else if path == "~" {
+         dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))
+     } else {
+         Ok(PathBuf::from(path))
+     }
+ }
+ 
+ pub fn secrets_toml_path() -> Result<PathBuf> {
+-    Ok(dotfiles_dir()?.join(".secrets.toml"))
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn symlinks_toml_path() -> Result<PathBuf> {
+     Ok(dotfiles_dir()?.join(".symlinks.toml"))
+ }
+ 
+ pub fn read_secrets() -> Result<SecretsFile> {
+     let path = secrets_toml_path()?;

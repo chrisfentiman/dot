@@ -1,0 +1,21 @@
+--- src/commands/init.rs
++++ delete ! in run_brewfile
+@@ -190,17 +190,17 @@
+         );
+     }
+     Ok(())
+ }
+ 
+ #[cfg(target_os = "macos")]
+ fn run_brewfile() -> Result<()> {
+     let brewfile = dotfiles::dotfiles_dir()?.join("Brewfile");
+-    if !brewfile.exists() {
++    if  /* ~ changed by cargo-mutants ~ */brewfile.exists() {
+         println!("{} No Brewfile found, skipping brew bundle", "·".dimmed());
+         return Ok(());
+     }
+ 
+     println!("Running brew bundle...");
+     let status = Command::new("brew")
+         .args([
+             "bundle",

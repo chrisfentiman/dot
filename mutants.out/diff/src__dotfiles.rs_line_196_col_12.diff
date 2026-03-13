@@ -1,0 +1,21 @@
+--- src/dotfiles.rs
++++ delete ! in render_and_symlink_all
+@@ -188,17 +188,17 @@
+     let configs = configs_dir()?;
+     let mut done = Vec::new();
+ 
+     for (name, target_str) in &symlinks.symlinks {
+         let template_path = configs.join(format!("{name}.tmpl"));
+         let output_path = configs.join(name);
+         let link_path = expand_tilde(target_str)?;
+ 
+-        if !template_path.exists() {
++        if  /* ~ changed by cargo-mutants ~ */template_path.exists() {
+             eprintln!("Warning: template not found for {name}, skipping");
+             continue;
+         }
+ 
+         render_and_write(&template_path, &output_path, &secrets)
+             .with_context(|| format!("Failed to render {name}"))?;
+ 
+         ensure_symlink(&output_path, &link_path)

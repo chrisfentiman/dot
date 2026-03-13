@@ -1,0 +1,21 @@
+--- src/commands/diff.rs
++++ replace < with > in compute_diff
+@@ -143,17 +143,17 @@
+                     break;
+                 }
+             }
+             if !matched {
+                 if oi < old.len() {
+                     out.push(format!("- {}", old[oi]));
+                     oi += 1;
+                 }
+-                if ni < new.len() {
++                if ni > /* ~ changed by cargo-mutants ~ */ new.len() {
+                     out.push(format!("+ {}", new[ni]));
+                     ni += 1;
+                 }
+             }
+         }
+     }
+ 
+     out

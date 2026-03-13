@@ -1,0 +1,101 @@
+--- src/commands/init.rs
++++ replace setup_dotfiles_dir -> Result<()> with Ok(())
+@@ -36,97 +36,17 @@
+             println!("    {} {}", "✓".green(), entry);
+         }
+     }
+ 
+     Ok(())
+ }
+ 
+ fn setup_dotfiles_dir() -> Result<()> {
+-    let dotfiles = dotfiles::dotfiles_dir()?;
+-
+-    if dotfiles.exists() {
+-        println!("{} {} already exists", "✓".green(), dotfiles.display());
+-        return Ok(());
+-    }
+-
+-    println!("{}", "~/dotfiles not found.".yellow());
+-
+-    let url: String = Input::with_theme(&ColorfulTheme::default())
+-        .with_prompt("Git repo URL to clone (leave blank to create fresh repo)")
+-        .allow_empty(true)
+-        .interact_text()
+-        .context("Failed to read git repo URL")?;
+-
+-    if url.is_empty() {
+-        fs::create_dir_all(&dotfiles)
+-            .with_context(|| format!("Failed to create {}", dotfiles.display()))?;
+-
+-        let init_status = Command::new("git")
+-            .args(["init", "-b", "main"])
+-            .current_dir(&dotfiles)
+-            .status()
+-            .context("Failed to run git init")?;
+-        if !init_status.success() {
+-            Command::new("git")
+-                .args(["init"])
+-                .current_dir(&dotfiles)
+-                .status()
+-                .context("Failed to run git init")?;
+-        }
+-
+-        fs::create_dir_all(dotfiles.join("configs")).context("Failed to create configs dir")?;
+-
+-        println!(
+-            "{} Created fresh dotfiles repo at {}",
+-            "✓".green(),
+-            dotfiles.display()
+-        );
+-
+-        if which("gh").is_ok() {
+-            println!("Creating private GitHub repo dotfiles...");
+-            let source = dotfiles.to_string_lossy();
+-            let gh_status = Command::new("gh")
+-                .args([
+-                    "repo",
+-                    "create",
+-                    "dotfiles",
+-                    "--private",
+-                    &format!("--source={}", source),
+-                    "--remote=origin",
+-                ])
+-                .status()
+-                .context("Failed to run gh repo create")?;
+-            if gh_status.success() {
+-                println!("{} GitHub repo created and remote set", "✓".green());
+-            } else {
+-                println!(
+-                    "{} gh repo create failed — you can set up the remote manually",
+-                    "!".yellow()
+-                );
+-            }
+-        } else {
+-            println!(
+-                "{} gh not found — skipping GitHub repo creation",
+-                "!".yellow()
+-            );
+-        }
+-    } else {
+-        println!("Cloning {}...", url);
+-        let clone_status = Command::new("git")
+-            .args(["clone", &url, dotfiles.to_str().unwrap()])
+-            .status()
+-            .context("Failed to run git clone")?;
+-        if !clone_status.success() {
+-            anyhow::bail!("git clone failed");
+-        }
+-        println!("{} Cloned dotfiles to {}", "✓".green(), dotfiles.display());
+-    }
+-
+-    Ok(())
++    Ok(()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn hint_secret_backends() -> Result<()> {
+     // Read which backends are actually used in the secrets file and check their CLIs
+     let secrets = dotfiles::read_secrets().unwrap_or_default();
+     let mut needs_pass = false;
+     let mut needs_op = false;
+     let mut needs_bw = false;

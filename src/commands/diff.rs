@@ -105,33 +105,38 @@ pub fn run(name: Option<String>) -> Result<()> {
 }
 
 fn print_diff(old: &[&str], new: &[&str]) {
-    // Walk both slices with a simple patience-style greedy diff
+    for line in compute_diff(old, new) {
+        println!("{line}");
+    }
+}
+
+/// Returns a human-readable diff of two line slices.
+/// Exposed `pub` so fuzz targets and tests can call it without going through I/O.
+pub fn compute_diff(old: &[&str], new: &[&str]) -> Vec<String> {
+    let mut out = Vec::new();
     let mut oi = 0usize;
     let mut ni = 0usize;
 
     while oi < old.len() || ni < new.len() {
         if oi < old.len() && ni < new.len() && old[oi] == new[ni] {
-            println!("  {}", old[oi]);
+            out.push(format!("  {}", old[oi]));
             oi += 1;
             ni += 1;
         } else {
-            // Look ahead up to 4 lines to find the next match
             let lookahead = 4;
             let mut matched = false;
             for delta in 1..=lookahead {
                 if ni + delta < new.len() && oi < old.len() && old[oi] == new[ni + delta] {
-                    // new lines were added
                     for line in &new[ni..ni + delta] {
-                        println!("{} {}", "+".green(), line.green());
+                        out.push(format!("+ {line}"));
                     }
                     ni += delta;
                     matched = true;
                     break;
                 }
                 if oi + delta < old.len() && ni < new.len() && old[oi + delta] == new[ni] {
-                    // old lines were removed
                     for line in &old[oi..oi + delta] {
-                        println!("{} {}", "-".red(), line.red());
+                        out.push(format!("- {line}"));
                     }
                     oi += delta;
                     matched = true;
@@ -139,16 +144,17 @@ fn print_diff(old: &[&str], new: &[&str]) {
                 }
             }
             if !matched {
-                // changed line
                 if oi < old.len() {
-                    println!("{} {}", "-".red(), old[oi].red());
+                    out.push(format!("- {}", old[oi]));
                     oi += 1;
                 }
                 if ni < new.len() {
-                    println!("{} {}", "+".green(), new[ni].green());
+                    out.push(format!("+ {}", new[ni]));
                     ni += 1;
                 }
             }
         }
     }
+
+    out
 }

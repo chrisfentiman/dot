@@ -1,0 +1,21 @@
+--- src/commands/remove.rs
++++ delete ! in run
+@@ -9,17 +9,17 @@
+     let mut symlinks = dotfiles::read_symlinks()?;
+ 
+     if symlinks.symlinks.is_empty() {
+         anyhow::bail!("No managed configs found.");
+     }
+ 
+     let config_name = match name {
+         Some(n) => {
+-            if !symlinks.symlinks.contains_key(&n) {
++            if  /* ~ changed by cargo-mutants ~ */symlinks.symlinks.contains_key(&n) {
+                 anyhow::bail!("Config '{}' is not managed by dotf", n);
+             }
+             n
+         }
+         None => {
+             let mut names: Vec<String> = symlinks.symlinks.keys().cloned().collect();
+             names.sort();
+             let selection = Select::with_theme(&ColorfulTheme::default())

@@ -113,3 +113,109 @@ fn fetch_bw(path: &str, original_uri: &str) -> Result<String> {
 fn fetch_env(var: &str) -> Result<String> {
     std::env::var(var).map_err(|_| anyhow!("Environment variable '{}' is not set", var))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── backend_name ─────────────────────────────────────────────
+    #[test]
+    fn backend_name_known_schemes() {
+        assert_eq!(backend_name("pass://vault/item/field"), "Proton Pass");
+        assert_eq!(backend_name("op://vault/item/field"), "1Password");
+        assert_eq!(backend_name("bw://item/field"), "Bitwarden");
+        assert_eq!(backend_name("env://MY_VAR"), "environment");
+    }
+
+    #[test]
+    fn backend_name_unknown_returns_unknown() {
+        assert_eq!(backend_name("vault://secret"), "unknown");
+        assert_eq!(backend_name(""), "unknown");
+        assert_eq!(backend_name("http://example.com"), "unknown");
+    }
+
+    // ── fetch: unknown / empty scheme ─────────────────────────────
+    #[test]
+    fn fetch_unknown_scheme_errors() {
+        let err = fetch("vault://some/path").unwrap_err();
+        assert!(err.to_string().contains("Unknown secret URI scheme"));
+    }
+
+    #[test]
+    fn fetch_empty_uri_errors() {
+        let err = fetch("").unwrap_err();
+        assert!(err.to_string().contains("Unknown secret URI scheme"));
+    }
+
+    #[test]
+    fn fetch_no_double_slash_errors() {
+        // "env:MY_VAR" is not a valid URI — should hit unknown scheme
+        let err = fetch("env:MY_VAR").unwrap_err();
+        assert!(err.to_string().contains("Unknown secret URI scheme"));
+    }
+
+    // ── fetch: env backend ───────────────────────────────────────
+    #[test]
+    fn fetch_env_present() {
+        unsafe { std::env::set_var("_DOTF_TEST_SECRET", "hunter2"); }
+        let val = fetch("env://_DOTF_TEST_SECRET").unwrap();
+        assert_eq!(val, "hunter2");
+        unsafe { std::env::remove_var("_DOTF_TEST_SECRET"); }
+    }
+
+    #[test]
+    fn fetch_env_missing_errors() {
+        unsafe { std::env::remove_var("_DOTF_TEST_MISSING_XYZ"); }
+        let err = fetch("env://_DOTF_TEST_MISSING_XYZ").unwrap_err();
+        assert!(err.to_string().contains("_DOTF_TEST_MISSING_XYZ"));
+    }
+
+    #[test]
+    fn fetch_env_empty_var_name_errors() {
+        let err = fetch("env://").unwrap_err();
+        assert!(err.to_string().contains("is not set"));
+    }
+
+    // ── fetch: bw routing (CLI absent in CI, error should name bw) ─
+    #[test]
+    fn fetch_bw_routes_to_bitwarden() {
+        let err = fetch("bw://myitem/username").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Bitwarden") || msg.contains("`bw`"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn fetch_bw_no_field_routes_to_bitwarden() {
+        let err = fetch("bw://myitem").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Bitwarden") || msg.contains("`bw`"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    // ── fetch: pass routing ──────────────────────────────────────
+    #[test]
+    fn fetch_pass_routes_to_proton_pass() {
+        let err = fetch("pass://vault/item/field").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Proton Pass") || msg.contains("`pass`"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    // ── fetch: op routing ────────────────────────────────────────
+    #[test]
+    fn fetch_op_routes_to_1password() {
+        let err = fetch("op://vault/item/field").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("1Password") || msg.contains("`op`"),
+            "unexpected error: {msg}"
+        );
+    }
+}

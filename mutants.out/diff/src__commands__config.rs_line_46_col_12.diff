@@ -1,0 +1,21 @@
+--- src/commands/config.rs
++++ delete ! in run
+@@ -38,17 +38,17 @@
+ 
+     loop {
+         let has_secret = Confirm::with_theme(&ColorfulTheme::default())
+             .with_prompt("Does this file contain a secret value you want to inject?")
+             .default(false)
+             .interact()
+             .context("Failed to read confirmation")?;
+ 
+-        if !has_secret {
++        if  /* ~ changed by cargo-mutants ~ */has_secret {
+             break;
+         }
+ 
+         let secret_value: String = Input::with_theme(&ColorfulTheme::default())
+             .with_prompt("Paste the exact secret value to replace")
+             .interact_text()
+             .context("Failed to read secret value")?;
+ 

@@ -1,0 +1,21 @@
+--- src/commands/status.rs
++++ replace == with != in run
+@@ -47,17 +47,17 @@
+                 Err(_) => ConfigStatus::MissingSymlink,
+                 Ok(link_path) => {
+                     if link_path.symlink_metadata().is_err() {
+                         ConfigStatus::MissingSymlink
+                     } else {
+                         match fs::read_link(&link_path) {
+                             Err(_) => ConfigStatus::BrokenSymlink,
+                             Ok(dest) => {
+-                                if dest == output_path {
++                                if dest != /* ~ changed by cargo-mutants ~ */ output_path {
+                                     ConfigStatus::Ok
+                                 } else {
+                                     ConfigStatus::WrongTarget(dest.display().to_string())
+                                 }
+                             }
+                         }
+                     }
+                 }

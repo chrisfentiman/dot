@@ -1,6 +1,4 @@
-mod commands;
-mod dotfiles;
-mod secret;
+use dot::commands;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};

@@ -1,0 +1,21 @@
+--- src/commands/config.rs
++++ delete ! in run
+@@ -85,17 +85,17 @@
+         template_path.display()
+     );
+ 
+     let mut secrets = dotfiles::read_secrets()?;
+     for (name, uri) in &new_secrets {
+         secrets.secrets.insert(name.clone(), uri.clone());
+     }
+     dotfiles::write_secrets(&secrets)?;
+-    if !new_secrets.is_empty() {
++    if  /* ~ changed by cargo-mutants ~ */new_secrets.is_empty() {
+         println!(
+             "{} Added {} secret(s) to .secrets.toml",
+             "✓".green(),
+             new_secrets.len()
+         );
+     }
+ 
+     // Derive the symlink target from the original file's actual location

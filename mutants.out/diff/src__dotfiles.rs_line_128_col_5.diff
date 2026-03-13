@@ -1,0 +1,58 @@
+--- src/dotfiles.rs
++++ replace ensure_symlink -> Result<()> with Ok(())
+@@ -120,54 +120,17 @@
+         fs::create_dir_all(parent)
+             .with_context(|| format!("Failed to create dir {}", parent.display()))?;
+     }
+     fs::write(output_path, rendered)
+         .with_context(|| format!("Failed to write rendered file {}", output_path.display()))
+ }
+ 
+ pub fn ensure_symlink(target: &Path, link: &Path) -> Result<()> {
+-    if link.exists() || link.symlink_metadata().is_ok() {
+-        let existing = fs::read_link(link).unwrap_or_default();
+-        if existing == target {
+-            return Ok(());
+-        }
+-        fs::remove_file(link).with_context(|| {
+-            format!(
+-                "Failed to remove existing file/symlink at {}",
+-                link.display()
+-            )
+-        })?;
+-    }
+-    if let Some(parent) = link.parent() {
+-        fs::create_dir_all(parent)
+-            .with_context(|| format!("Failed to create parent dir {}", parent.display()))?;
+-    }
+-    #[cfg(unix)]
+-    {
+-        use std::os::unix::fs as unix_fs;
+-        unix_fs::symlink(target, link).with_context(|| {
+-            format!(
+-                "Failed to create symlink {} -> {}",
+-                link.display(),
+-                target.display()
+-            )
+-        })
+-    }
+-    #[cfg(windows)]
+-    {
+-        use std::os::windows::fs as win_fs;
+-        win_fs::symlink_file(target, link).with_context(|| {
+-            format!(
+-                "Failed to create symlink {} -> {}",
+-                link.display(),
+-                target.display()
+-            )
+-        })
+-    }
++    Ok(()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Exposed for testing only — splits bw URI into (item, subcommand).
+ #[cfg(test)]
+ pub fn _bw_parse(path: &str) -> (&str, &str) {
+     match path.rsplit_once('/') {
+         Some((item, field)) => {
+             let sub = match field {

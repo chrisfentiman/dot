@@ -1,0 +1,28 @@
+--- src/dotfiles.rs
++++ replace expand_tilde -> Result<PathBuf> with Ok(Default::default())
+@@ -22,24 +22,17 @@
+     Ok(home.join("dotfiles"))
+ }
+ 
+ pub fn configs_dir() -> Result<PathBuf> {
+     Ok(dotfiles_dir()?.join("configs"))
+ }
+ 
+ pub fn expand_tilde(path: &str) -> Result<PathBuf> {
+-    if let Some(rest) = path.strip_prefix("~/") {
+-        let home = dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
+-        Ok(home.join(rest))
+-    } else if path == "~" {
+-        dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))
+-    } else {
+-        Ok(PathBuf::from(path))
+-    }
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn secrets_toml_path() -> Result<PathBuf> {
+     Ok(dotfiles_dir()?.join(".secrets.toml"))
+ }
+ 
+ pub fn symlinks_toml_path() -> Result<PathBuf> {
+     Ok(dotfiles_dir()?.join(".symlinks.toml"))

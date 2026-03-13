@@ -1,0 +1,44 @@
+--- src/dotfiles.rs
++++ replace render_template -> Result<String> with Ok(String::new())
+@@ -79,40 +79,17 @@
+     fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))
+ }
+ 
+ pub fn fetch_secret(uri: &str) -> Result<String> {
+     secret::fetch(uri)
+ }
+ 
+ pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<String> {
+-    let template_content = fs::read_to_string(template_path)
+-        .with_context(|| format!("Failed to read template {}", template_path.display()))?;
+-
+-    let mut hbs = Handlebars::new();
+-    hbs.set_strict_mode(false);
+-    hbs.register_template_string("t", &template_content)
+-        .with_context(|| format!("Failed to parse template {}", template_path.display()))?;
+-
+-    let mut values: HashMap<String, String> = HashMap::new();
+-    for (name, uri) in &secrets.secrets {
+-        match fetch_secret(uri) {
+-            Ok(val) => {
+-                values.insert(name.clone(), val);
+-            }
+-            Err(e) => {
+-                eprintln!("Warning: could not fetch secret {name} ({uri}): {e}");
+-            }
+-        }
+-    }
+-
+-    let rendered = hbs
+-        .render("t", &values)
+-        .with_context(|| format!("Failed to render template {}", template_path.display()))?;
+-    Ok(rendered)
++    Ok(String::new()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn render_and_write(
+     template_path: &Path,
+     output_path: &Path,
+     secrets: &SecretsFile,
+ ) -> Result<()> {
+     let rendered = render_template(template_path, secrets)?;
