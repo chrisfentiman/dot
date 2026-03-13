@@ -3,10 +3,14 @@ name: Post-merge
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'fuzz/**'
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
+    name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
