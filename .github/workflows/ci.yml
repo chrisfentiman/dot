@@ -53,3 +53,9 @@ jobs:
 
       - name: fuzz_diff (30s)
         run: cargo fuzz run fuzz_diff -- -max_total_time=30
+
+      - name: fuzz_resolve_symlink (30s)
+        run: cargo fuzz run fuzz_resolve_symlink -- -max_total_time=30
+
+      - name: fuzz_toml_parse (30s)
+        run: cargo fuzz run fuzz_toml_parse -- -max_total_time=30
