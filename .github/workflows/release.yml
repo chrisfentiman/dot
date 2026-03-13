@@ -31,10 +31,6 @@ jobs:
             target: aarch64-unknown-linux-gnu
             asset_name: dotf-aarch64-linux
             binary: dot
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            asset_name: dotf-x86_64-windows.exe
-            binary: dot.exe
 
     steps:
       - name: Checkout

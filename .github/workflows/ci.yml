@@ -5,9 +5,9 @@ on:
     branches: [main]
 
 jobs:
-  check:
-    name: Lint & Test
-    runs-on: macos-latest
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -21,15 +21,27 @@ jobs:
       - name: Clippy
         run: cargo clippy -- -D warnings
 
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Test
         run: cargo test
 
       - name: Build
         run: cargo build --release
 
-  fuzz:
-    name: Fuzz (smoke run)
-    runs-on: macos-latest
+
+  fuzz-build:
+    name: Fuzz build
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -38,41 +50,128 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
 
-      - name: Build fuzz targets
+      - name: Build all targets
         run: cargo fuzz build
 
-      - name: fuzz_uri_dispatch (30s)
-        run: cargo fuzz run fuzz_uri_dispatch -- -max_total_time=30
+      - name: Upload fuzz binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-binaries
+          path: fuzz/target/x86_64-unknown-linux-gnu/release/fuzz_*
+          retention-days: 1
 
-      - name: fuzz_expand_tilde (30s)
-        run: cargo fuzz run fuzz_expand_tilde -- -max_total_time=30
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    needs: fuzz-build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - fuzz_uri_dispatch
+          - fuzz_expand_tilde
+          - fuzz_template_render
+          - fuzz_diff
+          - fuzz_resolve_symlink
+          - fuzz_toml_parse
+    steps:
+      - name: Download fuzz binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: fuzz-binaries
 
-      - name: fuzz_template_render (30s)
-        run: cargo fuzz run fuzz_template_render -- -max_total_time=30
-
-      - name: fuzz_diff (30s)
-        run: cargo fuzz run fuzz_diff -- -max_total_time=30
-
-      - name: fuzz_resolve_symlink (30s)
-        run: cargo fuzz run fuzz_resolve_symlink -- -max_total_time=30
-
-      - name: fuzz_toml_parse (30s)
-        run: cargo fuzz run fuzz_toml_parse -- -max_total_time=30
+      - name: Run (30s)
+        run: |
+          chmod +x ${{ matrix.target }}
+          ./${{ matrix.target }} -max_total_time=30
 
   mutants:
     name: Mutation testing
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: mutants-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: mutants-${{ runner.os }}-
 
       - name: Install cargo-mutants
         run: cargo install cargo-mutants
 
+      - name: Find changed Rust files
+        id: changed
+        run: |
+          files=$(git diff --name-only origin/main...HEAD -- 'src/**/*.rs' | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          if [ -z "$files" ]; then
+            echo "No Rust source files changed"
+          else
+            echo "Changed files: $files"
+          fi
+
       - name: Run mutation testing
-        run: cargo mutants --timeout=60 -- --lib
+        if: steps.changed.outputs.files != ''
+        run: |
+          file_args=""
+          for f in ${{ steps.changed.outputs.files }}; do
+            file_args="$file_args --file $f"
+          done
+          cargo mutants -j2 $file_args -- --lib
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ ! -f mutants.out/outcome.json ]; then
+            echo "No Rust source files changed — mutation testing skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          caught=$(jq '[.outcomes[] | select(.outcome == "CaughtMutant")] | length' mutants.out/outcome.json)
+          missed=$(jq '[.outcomes[] | select(.outcome == "MissedMutant")] | length' mutants.out/outcome.json)
+          timeout=$(jq '[.outcomes[] | select(.outcome == "Timeout")] | length' mutants.out/outcome.json)
+          unviable=$(jq '[.outcomes[] | select(.outcome == "Unviable")] | length' mutants.out/outcome.json)
+          total=$((caught + missed + timeout + unviable))
+
+          if [ "$total" -eq 0 ]; then
+            echo "No mutants generated from changed files." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          score=$((caught * 100 / (caught + missed)))
+
+          {
+            echo "## Mutation Testing Results"
+            echo ""
+            echo "| Metric | Count |"
+            echo "|--------|-------|"
+            echo "| Caught | $caught |"
+            echo "| Missed | $missed |"
+            echo "| Timeout | $timeout |"
+            echo "| Unviable | $unviable |"
+            echo "| **Total** | **$total** |"
+            echo "| **Score** | **${score}%** |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$missed" -gt 0 ]; then
+            {
+              echo "<details><summary>Missed mutants ($missed)</summary>"
+              echo ""
+              echo '```'
+              jq -r '.outcomes[] | select(.outcome == "MissedMutant") | "\(.scenario.function // "unknown") — \(.scenario.replacement // "unknown")"' mutants.out/outcome.json
+              echo '```'
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload mutation report
         if: always()
