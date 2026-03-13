@@ -1,6 +1,6 @@
 [package]
 name = "dot"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 description = "Dotfiles manager with pluggable secret injection (pass, op, bw, env)"
 license = "MIT"
