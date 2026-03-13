@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::secret;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct SecretsFile {
@@ -80,19 +81,7 @@ pub fn write_symlinks(symlinks: &SymlinksFile) -> Result<()> {
 }
 
 pub fn fetch_secret(uri: &str) -> Result<String> {
-    let output = Command::new("pass")
-        .args(["item", "get", uri, "--fields", "password"])
-        .output()
-        .with_context(|| format!("Failed to run pass for URI: {uri}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("pass failed for {uri}: {stderr}"));
-    }
-
-    let value =
-        String::from_utf8(output.stdout).with_context(|| "pass output is not valid UTF-8")?;
-    Ok(value.trim().to_string())
+    secret::fetch(uri)
 }
 
 pub fn render_template(template_path: &Path, secrets: &SecretsFile) -> Result<String> {

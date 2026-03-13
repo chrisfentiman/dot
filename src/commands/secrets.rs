@@ -2,19 +2,19 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
 
-use crate::dotfiles;
+use crate::{dotfiles, secret};
 
 #[derive(Subcommand)]
 pub enum SecretsAction {
-    /// List all secret placeholders and their pass:// paths
+    /// List all secret placeholders and their URIs
     List,
-    /// Validate all secrets exist in Proton Pass
+    /// Validate all secrets can be fetched from their backends
     Validate,
     /// Add a new secret placeholder
     Add {
         /// Placeholder name (e.g. GITHUB_EMAIL)
         name: String,
-        /// Proton Pass URI (e.g. pass://personal/github/email)
+        /// Secret URI (e.g. pass://vault/item/field  op://vault/item/field  env://VAR)
         uri: String,
     },
     /// Remove a secret placeholder
@@ -58,19 +58,31 @@ fn list() -> Result<()> {
         .max()
         .unwrap_or(10)
         .max(10);
+    let backend_width = "BACKEND".len();
 
     println!(
-        "{:<name_width$}  {:<uri_width$}",
+        "{:<name_width$}  {:<uri_width$}  {}",
         "PLACEHOLDER".bold(),
-        "PASS URI".bold()
+        "SECRET URI".bold(),
+        "BACKEND".bold()
     );
-    println!("{}", "─".repeat(name_width + uri_width + 2).dimmed());
+    println!(
+        "{}",
+        "─"
+            .repeat(name_width + uri_width + backend_width + 4)
+            .dimmed()
+    );
 
     let mut entries: Vec<_> = secrets.secrets.iter().collect();
     entries.sort_by_key(|(k, _)| k.as_str());
 
     for (name, uri) in entries {
-        println!("{:<name_width$}  {:<uri_width$}", name.cyan(), uri);
+        println!(
+            "{:<name_width$}  {:<uri_width$}  {}",
+            name.cyan(),
+            uri,
+            secret::backend_name(uri).dimmed()
+        );
     }
 
     Ok(())

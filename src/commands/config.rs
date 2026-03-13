@@ -63,9 +63,11 @@ pub fn run(path: Option<String>) -> Result<()> {
             .context("Failed to read placeholder name")?;
 
         let uri: String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt("Proton Pass URI (e.g. pass://personal/github/email)")
+            .with_prompt(
+                "Secret URI (e.g. pass://vault/item/field  op://vault/item/field  env://VAR)",
+            )
             .interact_text()
-            .context("Failed to read pass URI")?;
+            .context("Failed to read secret URI")?;
 
         content = content.replace(&secret_value, &format!("{{{{{placeholder}}}}}"));
         new_secrets.push((placeholder, uri));

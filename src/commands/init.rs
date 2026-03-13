@@ -9,14 +9,13 @@ use crate::dotfiles;
 
 pub fn run() -> Result<()> {
     println!("{}", "┌─────────────────────────────────────┐".cyan());
-    println!("{}", "│        dot — dotfiles manager        │".cyan());
-    println!("{}", "│     Proton Pass secret injection      │".cyan());
+    println!("{}", "│        dotf — dotfiles manager       │".cyan());
+    println!("{}", "│    secret injection via pass/op/bw   │".cyan());
     println!("{}", "└─────────────────────────────────────┘".cyan());
     println!();
 
     setup_dotfiles_dir()?;
-    ensure_pass()?;
-    authenticate_pass()?;
+    hint_secret_backends()?;
     run_brewfile()?;
     install_completions()?;
 
@@ -123,34 +122,58 @@ fn setup_dotfiles_dir() -> Result<()> {
     Ok(())
 }
 
-fn ensure_pass() -> Result<()> {
-    if which("pass").is_ok() {
-        println!("{} pass is available", "✓".green());
+fn hint_secret_backends() -> Result<()> {
+    // Read which backends are actually used in the secrets file and check their CLIs
+    let secrets = dotfiles::read_secrets().unwrap_or_default();
+    let mut needs_pass = false;
+    let mut needs_op = false;
+    let mut needs_bw = false;
+
+    for uri in secrets.secrets.values() {
+        if uri.starts_with("pass://") {
+            needs_pass = true;
+        } else if uri.starts_with("op://") {
+            needs_op = true;
+        } else if uri.starts_with("bw://") {
+            needs_bw = true;
+        }
+    }
+
+    // If no secrets configured yet, nothing to check
+    if !needs_pass && !needs_op && !needs_bw {
+        println!(
+            "{} No secret backends configured yet — add secrets with {}",
+            "·".dimmed(),
+            "dotf secrets add".cyan()
+        );
         return Ok(());
     }
 
-    println!("{} pass not found — installing via brew...", "!".yellow());
-    let status = Command::new("brew")
-        .args(["install", "protonpass/pass/pass"])
-        .status()
-        .context("Failed to run brew install")?;
-    if !status.success() {
-        anyhow::bail!("brew install pass-cli failed");
+    if needs_pass {
+        check_cli("pass", "Proton Pass", "brew install protonpass/pass/pass")?;
     }
-    println!("{} pass installed", "✓".green());
+    if needs_op {
+        check_cli("op", "1Password", "brew install 1password-cli")?;
+    }
+    if needs_bw {
+        check_cli("bw", "Bitwarden", "brew install bitwarden-cli")?;
+    }
+
     Ok(())
 }
 
-fn authenticate_pass() -> Result<()> {
-    println!("Authenticating with Proton Pass...");
-    let status = Command::new("pass")
-        .arg("auth")
-        .status()
-        .context("Failed to run pass auth")?;
-    if !status.success() {
-        anyhow::bail!("pass auth failed");
+fn check_cli(bin: &str, name: &str, install_hint: &str) -> Result<()> {
+    if which(bin).is_ok() {
+        println!("{} {} CLI ({}) available", "✓".green(), name, bin);
+    } else {
+        println!(
+            "{} {} CLI (`{}`) not found — install with: {}",
+            "!".yellow(),
+            name,
+            bin,
+            install_hint.cyan()
+        );
     }
-    println!("{} Authenticated with Proton Pass", "✓".green());
     Ok(())
 }
 
