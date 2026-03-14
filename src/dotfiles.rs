@@ -12,11 +12,11 @@ use crate::secret;
 
 // ── DotfContext ──────────────────────────────────────────────────────────────
 
-/// Whether dotf operates on the global `~/dotfiles` store or a project-local
+/// Whether dotf operates on the global `~/.dotf` store or a project-local
 /// `.dotf/` directory.
 #[derive(Debug, Clone)]
 pub enum DotfMode {
-    /// Global mode: data lives at `~/dotfiles`.
+    /// Global mode: data lives at `~/.dotf`.
     Global,
     /// Local mode: data lives at `<project_root>/.dotf/`.
     Local(PathBuf),
@@ -44,16 +44,26 @@ impl DotfContext {
         }
     }
 
+    /// Construct a local-mode context from a user-provided path.
+    ///
+    /// Uses `std::path::absolute` (not `canonicalize`) because the path may
+    /// not exist yet — `dotf init <path>` creates it.
+    pub fn local_from_path(path: &Path) -> Result<Self> {
+        let abs = std::path::absolute(path)
+            .with_context(|| format!("invalid path '{}'", path.display()))?;
+        Ok(Self::local(abs))
+    }
+
     /// The base directory where dotf stores its data.
     ///
-    /// - Global: `~/dotfiles`
+    /// - Global: `~/.dotf`
     /// - Local:  `<project_root>/.dotf`
     pub fn dotfiles_dir(&self) -> Result<PathBuf> {
         match &self.mode {
             DotfMode::Global => {
                 let home =
                     dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
-                Ok(home.join("dotfiles"))
+                Ok(home.join(".dotf"))
             }
             DotfMode::Local(root) => Ok(root.join(".dotf")),
         }
@@ -126,12 +136,54 @@ impl DotfContext {
         }
     }
 
+    /// Print a dimmed header to stderr showing the resolved mode and root.
+    /// Uses stderr so stdout remains pipeable.
+    pub fn print_mode_header(&self) {
+        use colored::Colorize;
+        match &self.mode {
+            DotfMode::Global => eprintln!("{}", "dotf (global ~/.dotf)".dimmed()),
+            DotfMode::Local(root) => {
+                eprintln!("{}", format!("dotf (local {})", root.display()).dimmed())
+            }
+        }
+        eprintln!();
+    }
+
+    /// Validate that `link_path` resolves to a location inside this context's
+    /// root directory (HOME for global, project root for local). Bails with a
+    /// descriptive error if the path escapes the boundary.
+    pub fn validate_link_boundary(&self, name: &str, link_path: &Path) -> Result<()> {
+        let root = self.root_dir()?;
+        let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+        let canonical_link = link_path.canonicalize().unwrap_or_else(|_| {
+            let file_name = link_path.file_name().unwrap_or_default().to_string_lossy();
+            if file_name.contains("..") {
+                return link_path.to_path_buf();
+            }
+            link_path
+                .parent()
+                .and_then(|p| p.canonicalize().ok())
+                .map(|p| p.join(file_name.as_ref()))
+                .unwrap_or_else(|| link_path.to_path_buf())
+        });
+        if !canonical_link.starts_with(&canonical_root) {
+            anyhow::bail!(
+                "Refusing to symlink {name}: destination {} is outside {}",
+                link_path.display(),
+                match &self.mode {
+                    DotfMode::Global => "home directory",
+                    DotfMode::Local(_) => "project root",
+                }
+            );
+        }
+        Ok(())
+    }
+
     /// Render all templates, write outputs, and create symlinks.
     pub fn render_and_symlink_all(&self) -> Result<Vec<String>> {
         let secrets = self.read_secrets()?;
         let symlinks = self.read_symlinks()?;
         let configs = self.configs_dir()?;
-        let root = self.root_dir()?;
         let mut done = Vec::new();
 
         for (name, target_str) in &symlinks.symlinks {
@@ -144,30 +196,7 @@ impl DotfContext {
                 continue;
             }
 
-            // Validate the symlink destination stays inside the root directory
-            // after resolving any `..` segments.
-            let canonical_link = link_path.canonicalize().unwrap_or_else(|_| {
-                let file_name = link_path.file_name().unwrap_or_default().to_string_lossy();
-                if file_name.contains("..") {
-                    return link_path.clone();
-                }
-                link_path
-                    .parent()
-                    .and_then(|p| p.canonicalize().ok())
-                    .map(|p| p.join(file_name.as_ref()))
-                    .unwrap_or_else(|| link_path.clone())
-            });
-            let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
-            if !canonical_link.starts_with(&canonical_root) {
-                anyhow::bail!(
-                    "Refusing to symlink {name}: destination {} is outside {}",
-                    link_path.display(),
-                    match &self.mode {
-                        DotfMode::Global => "home directory".to_string(),
-                        DotfMode::Local(_) => "project root".to_string(),
-                    }
-                );
-            }
+            self.validate_link_boundary(name, &link_path)?;
 
             render_and_write(&template_path, &output_path, &secrets)
                 .with_context(|| format!("Failed to render {name}"))?;
@@ -179,6 +208,70 @@ impl DotfContext {
         }
 
         Ok(done)
+    }
+}
+
+/// Walk from `start` up to filesystem root looking for a `.dotf/` directory.
+/// Returns the directory *containing* `.dotf/` (the project root), not `.dotf/` itself.
+/// Returns `None` if no `.dotf/` is found before reaching the filesystem root.
+///
+/// On Unix, skips `.dotf/` directories not owned by the current user to mitigate
+/// malicious directory injection (analogous to CVE-2022-24765 in Git).
+pub fn find_dotf_root(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .find(|dir| {
+            let dotf = dir.join(".dotf");
+            dotf.is_dir() && is_owned_by_current_user(&dotf)
+        })
+        .map(Path::to_path_buf)
+}
+
+/// Check that a path is owned by the current user.
+/// Always returns `true` on non-Unix platforms.
+#[cfg(unix)]
+fn is_owned_by_current_user(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match path.metadata() {
+        Ok(meta) => meta.uid() == unsafe { libc::getuid() },
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(unix))]
+fn is_owned_by_current_user(_path: &Path) -> bool {
+    true
+}
+
+/// Auto-detect the operating mode by walking up from the current directory.
+///
+/// - If a `.dotf/` directory is found at `$HOME`, use global mode.
+/// - If a `.dotf/` directory is found elsewhere (closer to cwd), use local mode.
+/// - If no `.dotf/` is found, default to global mode.
+pub fn resolve_context() -> Result<DotfContext> {
+    let cwd = std::env::current_dir().context("Cannot determine current directory")?;
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
+    Ok(resolve_context_from(&cwd, &home))
+}
+
+/// Core logic for scope auto-detection, separated from environment access for
+/// testability. Determines Global vs Local based on where `.dotf/` is found
+/// relative to `home`.
+pub fn resolve_context_from(cwd: &Path, home: &Path) -> DotfContext {
+    // Canonicalize to handle macOS firmlinks (/Users → /System/Volumes/Data/Users)
+    // and other symlink scenarios where byte-level PathBuf comparison would fail.
+    let canonical_home = home.canonicalize().unwrap_or_else(|_| home.to_path_buf());
+
+    match find_dotf_root(cwd) {
+        Some(root) => {
+            let canonical_root = root.canonicalize().unwrap_or(root);
+            if canonical_root == canonical_home {
+                DotfContext::global()
+            } else {
+                DotfContext::local(canonical_root)
+            }
+        }
+        None => DotfContext::global(),
     }
 }
 
@@ -798,7 +891,7 @@ mod tests {
         let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let _home = crate::EnvGuard::set("HOME", tmp.path().to_str().unwrap());
-        let dotfiles = tmp.path().join("dotfiles");
+        let dotfiles = tmp.path().join(".dotf");
         fs::create_dir_all(dotfiles.join("configs")).unwrap();
         fs::write(dotfiles.join(".secrets.toml"), "{{invalid toml!!!").unwrap();
         let ctx = DotfContext::global();
@@ -814,7 +907,7 @@ mod tests {
         let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let _home = crate::EnvGuard::set("HOME", tmp.path().to_str().unwrap());
-        let dotfiles = tmp.path().join("dotfiles");
+        let dotfiles = tmp.path().join(".dotf");
         fs::create_dir_all(dotfiles.join("configs")).unwrap();
         fs::write(dotfiles.join(".symlinks.toml"), "not valid toml [[[").unwrap();
         let ctx = DotfContext::global();
@@ -830,7 +923,7 @@ mod tests {
         let _g = crate::env_lock();
         let tmp = TempDir::new().unwrap();
         let _home = crate::EnvGuard::set("HOME", tmp.path().to_str().unwrap());
-        let dotfiles = tmp.path().join("dotfiles");
+        let dotfiles = tmp.path().join(".dotf");
         fs::create_dir_all(dotfiles.join("configs")).unwrap();
         fs::write(
             dotfiles.join(".secrets.toml"),
@@ -1106,7 +1199,7 @@ mod tests {
         let _g = crate::env_lock();
         let ctx = DotfContext::global();
         let dir = ctx.dotfiles_dir().unwrap();
-        assert!(dir.ends_with("dotfiles"));
+        assert!(dir.ends_with(".dotf"));
     }
 
     #[test]
@@ -1244,6 +1337,141 @@ mod tests {
         assert!(
             err.to_string().contains("outside"),
             "should reject path traversal: {err}"
+        );
+    }
+
+    // ── find_dotf_root ────────────────────────────────────────────
+
+    #[test]
+    fn find_dotf_root_finds_at_cwd() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".dotf")).unwrap();
+        assert_eq!(find_dotf_root(tmp.path()), Some(tmp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn find_dotf_root_finds_parent() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".dotf")).unwrap();
+        let sub = tmp.path().join("a/b/c");
+        fs::create_dir_all(&sub).unwrap();
+        assert_eq!(find_dotf_root(&sub), Some(tmp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn find_dotf_root_returns_none_when_absent() {
+        let tmp = TempDir::new().unwrap();
+        // No .dotf directory — should walk up and find nothing (tmpdir is deep enough)
+        let sub = tmp.path().join("x/y");
+        fs::create_dir_all(&sub).unwrap();
+        // We can't guarantee it won't find one above tmp, but it shouldn't find one at sub
+        let result = find_dotf_root(&sub);
+        // The result should not be sub or sub's parents within tmp
+        if let Some(ref root) = result {
+            assert!(!root.starts_with(tmp.path()));
+        }
+    }
+
+    #[test]
+    fn find_dotf_root_prefers_closest() {
+        let tmp = TempDir::new().unwrap();
+        // .dotf at root
+        fs::create_dir_all(tmp.path().join(".dotf")).unwrap();
+        // .dotf at nested project
+        let project = tmp.path().join("projects/myapp");
+        fs::create_dir_all(project.join(".dotf")).unwrap();
+
+        // From inside the nested project, find the closest .dotf
+        let deep = project.join("src");
+        fs::create_dir_all(&deep).unwrap();
+        assert_eq!(find_dotf_root(&deep), Some(project.clone()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_owned_by_current_user_returns_true_for_own_dir() {
+        let tmp = TempDir::new().unwrap();
+        assert!(is_owned_by_current_user(tmp.path()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_owned_by_current_user_returns_false_for_nonexistent() {
+        assert!(!is_owned_by_current_user(Path::new(
+            "/nonexistent/path/abc123"
+        )));
+    }
+
+    // ── resolve_context_from ──────────────────────────────────────
+
+    #[test]
+    fn resolve_context_from_dotf_at_home_returns_global() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path().to_path_buf();
+        fs::create_dir_all(home.join(".dotf")).unwrap();
+        let cwd = home.join("some/project");
+        fs::create_dir_all(&cwd).unwrap();
+
+        let ctx = resolve_context_from(&cwd, &home);
+        assert!(
+            matches!(ctx.mode, DotfMode::Global),
+            "expected Global when .dotf is at HOME, got {:?}",
+            ctx.mode
+        );
+    }
+
+    #[test]
+    fn resolve_context_from_dotf_at_project_returns_local() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path().join("home");
+        fs::create_dir_all(home.join(".dotf")).unwrap();
+        let project = tmp.path().join("home/dev/myproject");
+        fs::create_dir_all(project.join(".dotf")).unwrap();
+        let cwd = project.join("src");
+        fs::create_dir_all(&cwd).unwrap();
+
+        let ctx = resolve_context_from(&cwd, &home);
+        assert!(
+            matches!(&ctx.mode, DotfMode::Local(root) if *root == project.canonicalize().unwrap()),
+            "expected Local(project), got {:?}",
+            ctx.mode
+        );
+    }
+
+    #[test]
+    fn resolve_context_from_no_dotf_returns_global() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let cwd = tmp.path().join("home/dev");
+        fs::create_dir_all(&cwd).unwrap();
+
+        let ctx = resolve_context_from(&cwd, &home);
+        // No .dotf anywhere in tmp, but walk-up might find one above tmp.
+        // At minimum, it should not be Local pointing inside tmp.
+        if let DotfMode::Local(root) = &ctx.mode {
+            assert!(
+                !root.starts_with(tmp.path()),
+                "should not detect local mode in tmp: {:?}",
+                ctx.mode
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_context_from_prefers_project_over_home() {
+        // Both home and a nested project have .dotf — the closer one (project) wins
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path().join("fakehome");
+        fs::create_dir_all(home.join(".dotf")).unwrap();
+        let project = home.join("code/app");
+        fs::create_dir_all(project.join(".dotf")).unwrap();
+
+        let ctx = resolve_context_from(&project, &home);
+        assert!(
+            matches!(&ctx.mode, DotfMode::Local(_)),
+            "expected Local when project .dotf is closer than home, got {:?}",
+            ctx.mode
         );
     }
 }
