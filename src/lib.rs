@@ -2,6 +2,7 @@ pub mod commands;
 pub mod dotfiles;
 pub mod runner;
 pub mod secret;
+pub mod ui;
 
 /// Process-wide mutex for tests that mutate environment variables.
 #[cfg(test)]
