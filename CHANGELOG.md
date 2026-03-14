@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/chrisfentiman/dot/compare/v0.8.1...v0.9.0) (2026-03-14)
+
+
+### Features
+
+* git-style scope auto-detection with .dotf/ walk-up ([#15](https://github.com/chrisfentiman/dot/issues/15)) ([13e3ccc](https://github.com/chrisfentiman/dot/commit/13e3ccc7bc238b0ebea2bea405658d9d9f5b4bec))
+
 ## [0.8.1](https://github.com/chrisfentiman/dot/compare/v0.8.0...v0.8.1) (2026-03-13)
 
 
