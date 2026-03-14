@@ -136,19 +136,6 @@ impl DotfContext {
         }
     }
 
-    /// Print a dimmed header to stderr showing the resolved mode and root.
-    /// Uses stderr so stdout remains pipeable.
-    pub fn print_mode_header(&self) {
-        use colored::Colorize;
-        match &self.mode {
-            DotfMode::Global => eprintln!("{}", "dotf (global ~/.dotf)".dimmed()),
-            DotfMode::Local(root) => {
-                eprintln!("{}", format!("dotf (local {})", root.display()).dimmed())
-            }
-        }
-        eprintln!();
-    }
-
     /// Validate that `link_path` resolves to a location inside this context's
     /// root directory (HOME for global, project root for local). Bails with a
     /// descriptive error if the path escapes the boundary.

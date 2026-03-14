@@ -52,7 +52,10 @@ fn run_local(ui: &UI, ctx: &DotfContext) -> Result<()> {
     {
         ui.warn(
             "Warning",
-            format!("A .dotf/ directory already exists at {}", existing.display()),
+            format!(
+                "A .dotf/ directory already exists at {}",
+                existing.display()
+            ),
         );
         ui.hint(format!(
             "Creating a nested .dotf/ at {} — is this intentional?",
@@ -473,122 +476,6 @@ mod tests {
 
         let ctx = DotfContext::local(root.clone());
         run_local(&UI::new(), &ctx).unwrap();
-
-        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
-        assert!(
-            !gitignore.starts_with('\n'),
-            "empty file should not get leading blank line: {gitignore:?}"
-        );
-        assert!(
-            gitignore.contains(".dotf/configs/*"),
-            "dotf entries not added"
-        );
-    }
-
-    #[test]
-    fn run_local_creates_dotf_and_gitignore() {
-        let tmp = TempDir::new().unwrap();
-        let root = tmp.path().to_path_buf();
-        let ctx = DotfContext::local(root.clone());
-
-        run_local(&ctx).unwrap();
-
-        // .dotf/configs/ must exist
-        assert!(root.join(".dotf/configs").is_dir());
-
-        // .gitignore must contain the expected entries
-        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
-        assert!(
-            gitignore.contains(".dotf/configs/*"),
-            "missing .dotf/configs/* in .gitignore"
-        );
-        assert!(
-            gitignore.contains("!.dotf/configs/*.tmpl"),
-            "missing !.dotf/configs/*.tmpl in .gitignore"
-        );
-        assert!(
-            gitignore.contains(".dotf/.secrets.toml"),
-            "missing .dotf/.secrets.toml in .gitignore"
-        );
-    }
-
-    #[test]
-    fn run_local_gitignore_is_idempotent() {
-        let tmp = TempDir::new().unwrap();
-        let root = tmp.path().to_path_buf();
-        let ctx = DotfContext::local(root.clone());
-
-        // Run twice
-        run_local(&ctx).unwrap();
-        run_local(&ctx).unwrap();
-
-        // .gitignore entries must not be duplicated
-        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
-        let count = gitignore
-            .lines()
-            .filter(|l| l.trim() == ".dotf/configs/*")
-            .count();
-        assert_eq!(
-            count, 1,
-            "gitignore entry duplicated: found {count} occurrences"
-        );
-    }
-
-    #[test]
-    fn run_local_preserves_existing_gitignore() {
-        let tmp = TempDir::new().unwrap();
-        let root = tmp.path().to_path_buf();
-
-        // Write a pre-existing .gitignore
-        std::fs::write(root.join(".gitignore"), "node_modules/\n*.log\n").unwrap();
-
-        let ctx = DotfContext::local(root.clone());
-        run_local(&ctx).unwrap();
-
-        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
-        assert!(
-            gitignore.contains("node_modules/"),
-            "existing .gitignore content was lost"
-        );
-        assert!(
-            gitignore.contains(".dotf/configs/*"),
-            "dotf entries not added"
-        );
-    }
-
-    #[test]
-    fn run_local_gitignore_no_trailing_newline() {
-        let tmp = TempDir::new().unwrap();
-        let root = tmp.path().to_path_buf();
-
-        // Existing .gitignore without trailing newline
-        std::fs::write(root.join(".gitignore"), "existing").unwrap();
-
-        let ctx = DotfContext::local(root.clone());
-        run_local(&ctx).unwrap();
-
-        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
-        // Must have a newline between existing content and new entries
-        assert!(
-            gitignore.starts_with("existing\n"),
-            "missing newline separator: {gitignore:?}"
-        );
-        assert!(
-            gitignore.contains(".dotf/configs/*"),
-            "dotf entries not added"
-        );
-    }
-
-    #[test]
-    fn run_local_gitignore_empty_file() {
-        let tmp = TempDir::new().unwrap();
-        let root = tmp.path().to_path_buf();
-
-        // Empty .gitignore — should not add a leading blank line
-        std::fs::write(root.join(".gitignore"), "").unwrap();
-
-        let ctx = DotfContext::local(root.clone());
-        run_local(&ctx).unwrap();
 
         let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
         assert!(
