@@ -76,10 +76,7 @@ pub fn run(ui: &UI, ctx: &DotfContext, name: Option<String>) -> Result<()> {
         };
 
         if fresh == current {
-            ui.skip(
-                "Unchanged",
-                ui.highlight(config_name),
-            );
+            ui.skip("Unchanged", ui.highlight(config_name));
         } else {
             any_diff = true;
             ui.blank();

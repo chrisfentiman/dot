@@ -25,11 +25,13 @@ pub fn run(ui: &UI, runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
     if !pull.success() {
         sp.finish_warn("Pulling", "failed");
 
-        if !pull.stdout.trim().is_empty() {
-            ui.raw(pull.stdout.trim());
+        let stdout = pull.stdout.trim();
+        let stderr = pull.stderr.trim();
+        if !stdout.is_empty() {
+            ui.raw(stdout);
         }
-        if !pull.stderr.trim().is_empty() {
-            ui.raw(pull.stderr.trim());
+        if !stderr.is_empty() {
+            ui.raw(stderr);
         }
 
         let conflicts = runner.run(
@@ -38,10 +40,11 @@ pub fn run(ui: &UI, runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
             Some(&dotfiles_dir),
         )?;
 
-        if !conflicts.stdout.trim().is_empty() {
+        let conflict_files = conflicts.stdout.trim();
+        if !conflict_files.is_empty() {
             ui.blank();
             ui.error("Conflict", "merge conflicts detected in:");
-            for file in conflicts.stdout.trim().lines() {
+            for file in conflict_files.lines() {
                 ui.raw(format!("           {}", ui.highlight(file)));
             }
             ui.blank();
@@ -54,16 +57,18 @@ pub fn run(ui: &UI, runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
             anyhow::bail!("git pull failed due to merge conflicts — resolve manually");
         }
 
-        anyhow::bail!("git pull failed: {}", pull.stderr.trim());
+        anyhow::bail!("git pull failed: {}", stderr);
     }
 
     sp.finish("Pulling", "latest changes");
 
-    if !pull.stdout.trim().is_empty() {
-        ui.raw(pull.stdout.trim());
+    let stdout = pull.stdout.trim();
+    let stderr = pull.stderr.trim();
+    if !stdout.is_empty() {
+        ui.raw(stdout);
     }
-    if !pull.stderr.trim().is_empty() {
-        ui.raw(pull.stderr.trim());
+    if !stderr.is_empty() {
+        ui.raw(stderr);
     }
 
     // Render templates and update symlinks

@@ -89,18 +89,9 @@ pub fn run(ui: &UI, ctx: &DotfContext) -> Result<()> {
         return Ok(());
     }
 
-    let name_width = statuses
-        .iter()
-        .map(|(k, _, _)| k.len())
-        .max()
-        .unwrap_or(6)
-        .max(6);
-    let target_width = statuses
-        .iter()
-        .map(|(_, v, _)| v.len())
-        .max()
-        .unwrap_or(6)
-        .max(6);
+    let (name_width, target_width) = statuses.iter().fold((6, 6), |(nw, tw), (k, v, _)| {
+        (nw.max(k.len()), tw.max(v.len()))
+    });
 
     ui.table_header(&[
         ("CONFIG", name_width),

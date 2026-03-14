@@ -30,10 +30,11 @@ pub fn run(ui: &UI, ctx: &DotfContext, path: Option<String>) -> Result<()> {
     let mut content = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read {}", source_path.display()))?;
 
+    let sep = ui.dim("─".repeat(60));
     ui.blank();
-    ui.raw(ui.dim("─".repeat(60)));
+    ui.raw(&sep);
     ui.raw(&content);
-    ui.raw(ui.dim("─".repeat(60)));
+    ui.raw(&sep);
     ui.blank();
 
     let mut new_secrets: Vec<(String, String)> = Vec::new();

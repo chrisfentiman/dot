@@ -2,8 +2,24 @@ use anyhow::{Context, Result};
 use dialoguer::{Confirm, Select, theme::ColorfulTheme};
 use std::fs;
 
+use std::path::Path;
+
 use crate::dotfiles::DotfContext;
 use crate::ui::UI;
+
+/// Remove a file, printing a UI action on success and silently ignoring NotFound.
+fn remove_file(ui: &UI, path: &Path, label: &str) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => ui.action("Removed", format!("{label} {}", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(
+                anyhow::Error::new(e).context(format!("Failed to remove {}", path.display()))
+            );
+        }
+    }
+    Ok(())
+}
 
 pub fn run(ui: &UI, ctx: &DotfContext, name: Option<String>) -> Result<()> {
     let mut symlinks = ctx.read_symlinks()?;
@@ -83,14 +99,7 @@ pub fn run(ui: &UI, ctx: &DotfContext, name: Option<String>) -> Result<()> {
     }
 
     // Remove symlink — handle NotFound gracefully (race between check and delete).
-    match fs::remove_file(&link_path) {
-        Ok(()) => ui.action("Removed", format!("symlink {}", link_path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            return Err(anyhow::Error::new(e)
-                .context(format!("Failed to remove symlink {}", link_path.display())));
-        }
-    }
+    remove_file(ui, &link_path, "symlink")?;
 
     // Optionally restore the rendered file in place of the symlink
     if restore && rendered_path.exists() {
@@ -107,27 +116,10 @@ pub fn run(ui: &UI, ctx: &DotfContext, name: Option<String>) -> Result<()> {
     }
 
     // Remove template
-    match fs::remove_file(&template_path) {
-        Ok(()) => ui.action("Removed", format!("template {}", template_path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            return Err(anyhow::Error::new(e)
-                .context(format!("Failed to remove {}", template_path.display())));
-        }
-    }
+    remove_file(ui, &template_path, "template")?;
 
     // Remove rendered output
-    match fs::remove_file(&rendered_path) {
-        Ok(()) => ui.action(
-            "Removed",
-            format!("rendered file {}", rendered_path.display()),
-        ),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            return Err(anyhow::Error::new(e)
-                .context(format!("Failed to remove {}", rendered_path.display())));
-        }
-    }
+    remove_file(ui, &rendered_path, "rendered file")?;
 
     // Remove from .symlinks.toml
     symlinks.symlinks.remove(&config_name);
