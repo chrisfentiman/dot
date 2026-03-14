@@ -13,41 +13,69 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
         return run_local(ctx);
     }
 
-    println!("{}", "┌─────────────────────────────────────┐".cyan());
-    println!("{}", "│        dotf — dotfiles manager       │".cyan());
-    println!("{}", "│    secret injection via pass/op/bw   │".cyan());
-    println!("{}", "└─────────────────────────────────────┘".cyan());
+    let version = env!("CARGO_PKG_VERSION");
+    println!();
+    println!("  {} {}", "dotf".bold(), format!("v{version}").dimmed());
     println!();
 
+    section("Repository");
     setup_dotfiles_dir(runner, ctx)?;
+
+    section("Secrets");
     hint_secret_backends(ctx)?;
+
     #[cfg(target_os = "macos")]
-    run_brewfile(runner, ctx)?;
+    {
+        section("Homebrew");
+        run_brewfile(runner, ctx)?;
+    }
+
     #[cfg(unix)]
-    install_completions(runner)?;
+    {
+        section("Shell");
+        install_completions(runner)?;
+    }
 
     let synced = ctx.render_and_symlink_all()?;
 
     println!();
-    println!("{}", "Setup complete!".green().bold());
     if synced.is_empty() {
         println!(
-            "  No configs symlinked yet. Run {} to add one.",
+            "  {} Setup complete — run {} to add a config",
+            "✓".green().bold(),
             "dotf config <path>".cyan()
         );
     } else {
-        println!("  Symlinked configs:");
+        println!(
+            "  {} Setup complete — {} config(s) symlinked",
+            "✓".green().bold(),
+            synced.len()
+        );
         for entry in &synced {
-            println!("    {} {}", "✓".green(), entry);
+            println!("    {} {}", "·".dimmed(), entry);
         }
     }
+    println!();
 
     Ok(())
+}
+
+fn section(name: &str) {
+    println!("  {} {}", "▸".cyan(), name.bold());
 }
 
 fn run_local(ctx: &DotfContext) -> Result<()> {
     let dotf_dir = ctx.dotfiles_dir()?;
     let configs_dir = ctx.configs_dir()?;
+
+    let version = env!("CARGO_PKG_VERSION");
+    println!();
+    println!(
+        "  {} {}",
+        "dotf".bold(),
+        format!("v{version} (local)").dimmed()
+    );
+    println!();
 
     // Warn if a parent directory already has .dotf/ — creating a nested one
     // is almost certainly a mistake.
@@ -55,21 +83,21 @@ fn run_local(ctx: &DotfContext) -> Result<()> {
         && let Some(parent) = root.parent()
         && let Some(existing) = dotfiles::find_dotf_root(parent)
     {
-        println!(
-            "{} A .dotf/ directory already exists at {}",
-            "!".yellow(),
+        detail_warn(&format!(
+            "A .dotf/ already exists at {}",
             existing.display()
-        );
-        println!(
-            "  Creating a nested .dotf/ at {} — is this intentional?",
+        ));
+        detail_hint(&format!(
+            "Creating a nested .dotf/ at {} — is this intentional?",
             root.display()
-        );
+        ));
         println!();
     }
 
+    section("Project");
     fs::create_dir_all(&configs_dir)
         .with_context(|| format!("Failed to create {}", configs_dir.display()))?;
-    println!("{} Created {}", "✓".green(), dotf_dir.display());
+    detail_ok(&format!("Created {}", dotf_dir.display()));
 
     // Append .gitignore entries (idempotent)
     let root = ctx.root_dir()?;
@@ -99,30 +127,34 @@ fn run_local(ctx: &DotfContext) -> Result<()> {
         }
         fs::write(&gitignore_path, &content)
             .with_context(|| format!("Failed to write {}", gitignore_path.display()))?;
-        println!(
-            "{} Updated .gitignore ({} entries added)",
-            "✓".green(),
+        detail_ok(&format!(
+            ".gitignore updated ({} entries added)",
             to_add.len()
-        );
+        ));
     } else {
-        println!("{} .gitignore already configured", "✓".green());
+        detail_ok(".gitignore already configured");
     }
 
     let synced = ctx.render_and_symlink_all()?;
 
     println!();
-    println!("{}", "Local dotf setup complete!".green().bold());
     if synced.is_empty() {
         println!(
-            "  No configs yet. Run {} to add one.",
+            "  {} Setup complete — run {} to add a config",
+            "✓".green().bold(),
             "dotf config <path>".cyan()
         );
     } else {
-        println!("  Symlinked configs:");
+        println!(
+            "  {} Setup complete — {} config(s) symlinked",
+            "✓".green().bold(),
+            synced.len()
+        );
         for entry in &synced {
-            println!("    {} {}", "✓".green(), entry);
+            println!("    {} {}", "·".dimmed(), entry);
         }
     }
+    println!();
 
     Ok(())
 }
@@ -131,27 +163,22 @@ fn setup_dotfiles_dir(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
     let dotfiles = ctx.dotfiles_dir()?;
 
     if dotfiles.exists() {
-        println!("{} {} already exists", "✓".green(), dotfiles.display());
+        detail_ok(&format!("{} already exists", dotfiles.display()));
         return Ok(());
     }
 
     // Migration hint: if old ~/dotfiles exists, tell the user.
-    // We know ~/.dotf doesn't exist here (early return above).
     let home = dirs::home_dir().context("Cannot determine home directory")?;
     let old_dotfiles = home.join("dotfiles");
     if old_dotfiles.exists() {
-        println!(
-            "{} Found existing ~/dotfiles — dotf now uses ~/.dotf/",
-            "!".yellow()
-        );
-        println!("  Run: mv ~/dotfiles ~/.dotf");
-        println!();
+        detail_warn("Found existing ~/dotfiles — dotf now uses ~/.dotf/");
+        detail_hint("mv ~/dotfiles ~/.dotf");
     }
 
-    println!("{}", "~/.dotf not found.".yellow());
+    detail_warn("~/.dotf not found");
 
     let url: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Git repo URL to clone (leave blank to create fresh repo)")
+        .with_prompt("    Git repo URL (blank to create fresh)")
         .allow_empty(true)
         .interact_text()
         .context("Failed to read git repo URL")?;
@@ -169,15 +196,9 @@ fn setup_dotfiles_dir(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
         }
 
         fs::create_dir_all(dotfiles.join("configs")).context("Failed to create configs dir")?;
-
-        println!(
-            "{} Created fresh dotfiles repo at {}",
-            "✓".green(),
-            dotfiles.display()
-        );
+        detail_ok(&format!("Created fresh repo at {}", dotfiles.display()));
 
         if which("gh").is_ok() {
-            println!("Creating private GitHub repo dotfiles...");
             let source = dotfiles
                 .to_str()
                 .ok_or_else(|| anyhow!("dotfiles path is not valid UTF-8"))?;
@@ -194,21 +215,14 @@ fn setup_dotfiles_dir(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
                 None,
             )?;
             if gh.success() {
-                println!("{} GitHub repo created and remote set", "✓".green());
+                detail_ok("GitHub repo created and remote set");
             } else {
-                println!(
-                    "{} gh repo create failed — you can set up the remote manually",
-                    "!".yellow()
-                );
+                detail_warn("gh repo create failed — set up the remote manually");
             }
         } else {
-            println!(
-                "{} gh not found — skipping GitHub repo creation",
-                "!".yellow()
-            );
+            detail_skip("gh not found — skipping GitHub repo creation");
         }
     } else {
-        println!("Cloning {}...", url);
         let dotfiles_str = dotfiles
             .to_str()
             .ok_or_else(|| anyhow!("dotfiles path is not valid UTF-8"))?;
@@ -216,7 +230,7 @@ fn setup_dotfiles_dir(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
         if !clone.success() {
             anyhow::bail!("git clone failed");
         }
-        println!("{} Cloned dotfiles to {}", "✓".green(), dotfiles.display());
+        detail_ok(&format!("Cloned to {}", dotfiles.display()));
     }
 
     Ok(())
@@ -239,11 +253,10 @@ fn hint_secret_backends(ctx: &DotfContext) -> Result<()> {
     }
 
     if !needs_pass && !needs_op && !needs_bw {
-        println!(
-            "{} No secret backends configured yet — add secrets with {}",
-            "·".dimmed(),
+        detail_skip(&format!(
+            "No backends configured — add with {}",
             "dotf secrets add".cyan()
-        );
+        ));
         return Ok(());
     }
 
@@ -275,15 +288,12 @@ fn hint_secret_backends(ctx: &DotfContext) -> Result<()> {
 
 fn check_cli(bin: &str, name: &str, install_hint: &str) -> Result<()> {
     if which(bin).is_ok() {
-        println!("{} {} CLI ({}) available", "✓".green(), name, bin);
+        detail_ok(&format!("{name} ({bin}) available"));
     } else {
-        println!(
-            "{} {} CLI (`{}`) not found — install with: {}",
-            "!".yellow(),
-            name,
-            bin,
+        detail_warn(&format!(
+            "{name} ({bin}) not found — install: {}",
             install_hint.cyan()
-        );
+        ));
     }
     Ok(())
 }
@@ -292,11 +302,10 @@ fn check_cli(bin: &str, name: &str, install_hint: &str) -> Result<()> {
 fn run_brewfile(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
     let brewfile = ctx.dotfiles_dir()?.join("Brewfile");
     if !brewfile.exists() {
-        println!("{} No Brewfile found, skipping brew bundle", "·".dimmed());
+        detail_skip("No Brewfile found, skipping");
         return Ok(());
     }
 
-    println!("Running brew bundle...");
     let brewfile_str = brewfile
         .to_str()
         .ok_or_else(|| anyhow!("Brewfile path is not valid UTF-8"))?;
@@ -308,7 +317,7 @@ fn run_brewfile(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
     if !result.success() {
         anyhow::bail!("brew bundle install failed");
     }
-    println!("{} brew bundle complete", "✓".green());
+    detail_ok("brew bundle complete");
     Ok(())
 }
 
@@ -319,7 +328,6 @@ fn install_completions(runner: &dyn Runner) -> Result<()> {
     fs::create_dir_all(&completions_dir).context("Failed to create ~/.zfunc")?;
 
     let completion_file = completions_dir.join("_dotf");
-    // Use current_exe() so this works even before dotf is on PATH (e.g. first brew install).
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("dotf"));
     let exe_str = exe.to_string_lossy().into_owned();
     let result = runner.run(&exe_str, &["completions", "zsh"], None);
@@ -328,23 +336,34 @@ fn install_completions(runner: &dyn Runner) -> Result<()> {
         Ok(out) if out.success() => {
             dotfiles::atomic_write(&completion_file, out.stdout.as_bytes(), 0o644)
                 .context("Failed to write zsh completion file")?;
-            println!(
-                "{} Zsh completions installed to {}",
-                "✓".green(),
-                completion_file.display()
-            );
-            println!(
-                "  Add to ~/.zshrc if not already present: fpath=(~/.zfunc $fpath) && autoload -U compinit && compinit"
+            detail_ok("Zsh completions installed");
+            detail_hint(
+                "Add to ~/.zshrc: fpath=(~/.zfunc $fpath) && autoload -U compinit && compinit",
             );
         }
         _ => {
-            println!(
-                "{} Could not install completions (dotf not in PATH yet — run after brew install)",
-                "·".dimmed()
-            );
+            detail_skip("Completions skipped — dotf not in PATH yet");
         }
     }
     Ok(())
+}
+
+// ── Output helpers ────────────────────────────────────────────────────────
+
+fn detail_ok(msg: &str) {
+    println!("    {} {}", "✓".green(), msg);
+}
+
+fn detail_warn(msg: &str) {
+    println!("    {} {}", "!".yellow(), msg);
+}
+
+fn detail_skip(msg: &str) {
+    println!("    {} {}", "·".dimmed(), msg.dimmed());
+}
+
+fn detail_hint(msg: &str) {
+    println!("      {}", msg.dimmed());
 }
 
 #[cfg(test)]
