@@ -1,11 +1,11 @@
 use crate::dotfiles;
 use crate::dotfiles::{DotfContext, DotfMode};
+use crate::ui::UI;
 use anyhow::{Context, Result, anyhow};
-use colored::Colorize;
 use dialoguer::{Confirm, Input, Password, theme::ColorfulTheme};
 use std::fs;
 
-pub fn run(ctx: &DotfContext, path: Option<String>) -> Result<()> {
+pub fn run(ui: &UI, ctx: &DotfContext, path: Option<String>) -> Result<()> {
     let raw_path = match path {
         Some(p) => p,
         None => Input::with_theme(&ColorfulTheme::default())
@@ -25,15 +25,16 @@ pub fn run(ctx: &DotfContext, path: Option<String>) -> Result<()> {
         .to_string_lossy()
         .to_string();
 
+    ui.action("Reading", source_path.display());
+
     let mut content = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read {}", source_path.display()))?;
 
-    println!();
-    println!("File contents of {}:", source_path.display());
-    println!("{}", "─".repeat(60).dimmed());
-    println!("{}", content);
-    println!("{}", "─".repeat(60).dimmed());
-    println!();
+    ui.blank();
+    ui.dim("─".repeat(60));
+    ui.raw(&content);
+    ui.dim("─".repeat(60));
+    ui.blank();
 
     let mut new_secrets: Vec<(String, String)> = Vec::new();
 
@@ -56,16 +57,18 @@ pub fn run(ctx: &DotfContext, path: Option<String>) -> Result<()> {
             .context("Failed to read secret value")?;
 
         if !content.contains(&secret_value) {
-            println!("{} Value not found in file, try again", "!".yellow());
+            ui.warn("Warning", "Value not found in file, try again");
             continue;
         }
 
         let match_count = content.matches(&secret_value).count();
         if match_count > 1 {
-            println!(
-                "{} Value appears {} times in the file — all occurrences will be replaced",
-                "!".yellow(),
-                match_count
+            ui.warn(
+                "Warning",
+                format!(
+                    "Value appears {} times in the file — all occurrences will be replaced",
+                    match_count
+                ),
             );
         }
 
@@ -105,11 +108,7 @@ pub fn run(ctx: &DotfContext, path: Option<String>) -> Result<()> {
     let template_path = configs_dir.join(format!("{filename}.tmpl"));
     fs::write(&template_path, &content)
         .with_context(|| format!("Failed to write template {}", template_path.display()))?;
-    println!(
-        "{} Template written to {}",
-        "✓".green(),
-        template_path.display()
-    );
+    ui.action("Creating", format!("template {}", template_path.display()));
 
     let mut secrets = ctx.read_secrets()?;
     for (name, uri) in &new_secrets {
@@ -117,10 +116,9 @@ pub fn run(ctx: &DotfContext, path: Option<String>) -> Result<()> {
     }
     ctx.write_secrets(&secrets)?;
     if !new_secrets.is_empty() {
-        println!(
-            "{} Added {} secret(s) to .secrets.toml",
-            "✓".green(),
-            new_secrets.len()
+        ui.action(
+            "Creating",
+            format!("added {} secret(s) to .secrets.toml", new_secrets.len()),
         );
     }
 
@@ -154,35 +152,27 @@ pub fn run(ctx: &DotfContext, path: Option<String>) -> Result<()> {
         .symlinks
         .insert(filename.clone(), target_str.clone());
     ctx.write_symlinks(&symlinks)?;
-    println!("{} Added symlink mapping to .symlinks.toml", "✓".green());
+    ui.action("Scanning", "added symlink mapping to .symlinks.toml");
 
     let output_path = configs_dir.join(&filename);
     dotfiles::render_and_write(&template_path, &output_path, &secrets)
         .with_context(|| format!("Failed to render template for {filename}"))?;
-    println!(
-        "{} Rendered template to {}",
-        "✓".green(),
-        output_path.display()
-    );
+    ui.action("Rendered", format!("template to {}", output_path.display()));
 
     let link_path = ctx.resolve_symlink_target(&target_str)?;
     ctx.validate_link_boundary(&filename, &link_path)?;
 
     dotfiles::ensure_symlink(&output_path, &link_path)
         .with_context(|| format!("Failed to create symlink for {filename}"))?;
-    println!(
-        "{} Symlinked {} -> {}",
-        "✓".green(),
-        link_path.display(),
-        output_path.display()
+    ui.action(
+        "Linking",
+        format!("{} -> {}", link_path.display(), output_path.display()),
     );
 
-    println!();
-    println!(
-        "{} {} is now managed by dotf",
-        "✓".green().bold(),
-        filename.cyan()
-    );
+    ui.finished(format!(
+        "{} is now managed by dotf",
+        ui.highlight(&filename)
+    ));
 
     Ok(())
 }

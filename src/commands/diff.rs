@@ -1,15 +1,13 @@
 use anyhow::{Context, Result};
-use colored::Colorize;
 use dialoguer::{Select, theme::ColorfulTheme};
 use similar::{ChangeTag, TextDiff};
 use std::fs;
 
 use crate::dotfiles;
 use crate::dotfiles::DotfContext;
+use crate::ui::UI;
 
-pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
-    ctx.print_mode_header();
-
+pub fn run(ui: &UI, ctx: &DotfContext, name: Option<String>) -> Result<()> {
     let symlinks = ctx.read_symlinks()?;
 
     if symlinks.symlinks.is_empty() {
@@ -51,10 +49,9 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
         let rendered_path = configs_dir.join(config_name);
 
         if !template_path.exists() {
-            println!(
-                "{} {}: template not found, skipping",
-                "!".yellow(),
-                config_name.cyan()
+            ui.warn(
+                "Skipped",
+                format!("{}: template not found", ui.highlight(config_name)),
             );
             continue;
         }
@@ -63,11 +60,9 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
         let fresh = match dotfiles::render_template(&template_path, &secrets) {
             Ok(s) => s,
             Err(e) => {
-                println!(
-                    "{} {}: failed to render — {}",
-                    "✗".red(),
-                    config_name.cyan(),
-                    e
+                ui.error(
+                    "Error",
+                    format!("{}: failed to render — {}", ui.highlight(config_name), e),
                 );
                 continue;
             }
@@ -81,33 +76,28 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
         };
 
         if fresh == current {
-            println!("{} {} — no changes", "✓".green(), config_name.cyan());
+            ui.skip(
+                "Checking",
+                format!("{} — no changes", ui.highlight(config_name)),
+            );
         } else {
             any_diff = true;
-            println!();
-            println!(
-                "{} {}",
-                "━━".cyan(),
-                format!(" diff: {} ", config_name).cyan().bold()
-            );
+            ui.blank();
+            ui.action("Diffing", ui.highlight(config_name));
 
-            print_diff(&current, &fresh);
-            println!();
+            for line in compute_diff(&current, &fresh) {
+                ui.raw(&line);
+            }
+            ui.blank();
         }
     }
 
     if !any_diff && names_to_diff.len() > 1 {
-        println!();
-        println!("{} All configs are up to date", "✓".green().bold());
+        ui.blank();
+        ui.finished("all configs are up to date");
     }
 
     Ok(())
-}
-
-fn print_diff(old: &str, new: &str) {
-    for line in compute_diff(old, new) {
-        println!("{line}");
-    }
 }
 
 /// Returns a human-readable unified-style diff of two text strings.

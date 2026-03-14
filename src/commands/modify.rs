@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
-use colored::Colorize;
 use dialoguer::{Select, theme::ColorfulTheme};
 
 use crate::dotfiles;
 use crate::dotfiles::DotfContext;
 use crate::runner::Runner;
+use crate::ui::UI;
 
-pub fn run(runner: &dyn Runner, ctx: &DotfContext, name: Option<String>) -> Result<()> {
+pub fn run(ui: &UI, runner: &dyn Runner, ctx: &DotfContext, name: Option<String>) -> Result<()> {
     let symlinks = ctx.read_symlinks()?;
 
     let config_name = match name {
@@ -41,6 +41,11 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext, name: Option<String>) -> Resu
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Template path is not valid UTF-8"))?;
 
+    ui.action(
+        "Editing",
+        format!("{} with {}", ui.highlight(&config_name), editor),
+    );
+
     let result = runner
         .run(&editor, &[template_str], None)
         .with_context(|| format!("Failed to open editor: {editor}"))?;
@@ -53,21 +58,19 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext, name: Option<String>) -> Resu
     let output_path = configs_dir.join(&config_name);
     dotfiles::render_and_write(&template_path, &output_path, &secrets)
         .with_context(|| format!("Failed to re-render {config_name}"))?;
-    println!("{} Re-rendered {}", "✓".green(), config_name);
+    ui.action("Rendered", &config_name);
 
     if let Some(target_str) = symlinks.symlinks.get(&config_name) {
         let link_path = ctx.resolve_symlink_target(target_str)?;
         dotfiles::ensure_symlink(&output_path, &link_path)
             .with_context(|| format!("Failed to update symlink for {config_name}"))?;
-        println!(
-            "{} Symlink up to date: {} -> {}",
-            "✓".green(),
-            link_path.display(),
-            output_path.display()
+        ui.action(
+            "Linking",
+            format!("{} -> {}", link_path.display(), output_path.display()),
         );
     }
 
-    println!("{} {} updated", "✓".green().bold(), config_name.cyan());
+    ui.finished(format!("{} updated", ui.highlight(&config_name)));
     Ok(())
 }
 
@@ -105,7 +108,8 @@ mod tests {
             MockRunner::new().on("false-editor", &[tmpl_path.to_str().unwrap()], "", false);
 
         let ctx = DotfContext::global();
-        let err = run(&runner, &ctx, Some("gitconfig".to_string())).unwrap_err();
+        let ui = UI::new();
+        let err = run(&ui, &runner, &ctx, Some("gitconfig".to_string())).unwrap_err();
         assert!(err.to_string().contains("Editor exited"));
     }
 }

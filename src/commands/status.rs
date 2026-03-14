@@ -1,8 +1,8 @@
 use anyhow::Result;
-use colored::Colorize;
 use std::fs;
 
 use crate::dotfiles::DotfContext;
+use crate::ui::UI;
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum ConfigStatus {
@@ -75,15 +75,16 @@ pub(crate) fn collect_statuses(ctx: &DotfContext) -> Result<Vec<(String, String,
     Ok(results)
 }
 
-pub fn run(ctx: &DotfContext) -> Result<()> {
-    ctx.print_mode_header();
-
+pub fn run(ui: &UI, ctx: &DotfContext) -> Result<()> {
     let statuses = collect_statuses(ctx)?;
 
     if statuses.is_empty() {
-        println!(
-            "No managed configs. Run {} to add one.",
-            "dotf config <path>".cyan()
+        ui.skip(
+            "Info",
+            format!(
+                "No managed configs. Run {} to add one.",
+                ui.highlight("dotf config <path>")
+            ),
         );
         return Ok(());
     }
@@ -101,29 +102,27 @@ pub fn run(ctx: &DotfContext) -> Result<()> {
         .unwrap_or(6)
         .max(6);
 
-    println!(
-        "{:<name_width$}  {:<target_width$}  {}",
-        "CONFIG".bold(),
-        "TARGET".bold(),
-        "STATUS".bold()
-    );
-    println!("{}", "─".repeat(name_width + target_width + 10).dimmed());
+    ui.table_header(&[
+        ("CONFIG", name_width),
+        ("TARGET", target_width),
+        ("STATUS", 6),
+    ]);
+    ui.table_separator(name_width + target_width + 10);
 
     for (name, target_str, status) in &statuses {
-        let status_str = match status {
-            ConfigStatus::Ok => "ok".green().bold().to_string(),
-            ConfigStatus::MissingSymlink => "missing symlink".yellow().bold().to_string(),
-            ConfigStatus::BrokenSymlink => "broken symlink".red().bold().to_string(),
-            ConfigStatus::MissingTemplate => "missing template".red().bold().to_string(),
-            ConfigStatus::WrongTarget(t) => format!("wrong target: {}", t.red()),
+        let (symbol, label) = match status {
+            ConfigStatus::Ok => (ui.sym_ok(), "ok".to_string()),
+            ConfigStatus::MissingSymlink => (ui.sym_warn(), "missing symlink".to_string()),
+            ConfigStatus::BrokenSymlink => (ui.sym_err(), "broken symlink".to_string()),
+            ConfigStatus::MissingTemplate => (ui.sym_err(), "missing template".to_string()),
+            ConfigStatus::WrongTarget(t) => (ui.sym_err(), format!("wrong target: {t}")),
         };
 
-        println!(
-            "{:<name_width$}  {:<target_width$}  {}",
-            name.cyan(),
-            target_str,
-            status_str
-        );
+        ui.table_row(format!(
+            "{:<name_width$}  {:<target_width$}  {symbol} {label}",
+            ui.highlight(name),
+            ui.dim(target_str),
+        ));
     }
 
     Ok(())
@@ -293,7 +292,7 @@ mod tests {
         let _env = Env::new();
         let statuses = collect_statuses(&ctx()).unwrap();
         assert!(statuses.is_empty());
-        run(&ctx()).unwrap();
+        run(&UI::new(), &ctx()).unwrap();
     }
 
     #[test]
@@ -357,7 +356,7 @@ mod tests {
         symlink(configs.join("cfg"), &link).unwrap();
 
         write_symlinks_map(&env, &[("cfg", &link.to_string_lossy())]);
-        run(&ctx()).unwrap();
+        run(&UI::new(), &ctx()).unwrap();
     }
 
     #[test]
@@ -365,7 +364,7 @@ mod tests {
         let env = Env::new();
         let path = env.dotfiles().join(".symlinks.toml");
         std::fs::write(&path, "not valid toml {{{{").unwrap();
-        let err = run(&ctx()).unwrap_err();
+        let err = run(&UI::new(), &ctx()).unwrap_err();
         assert!(
             err.to_string().contains("parse") || err.to_string().contains("TOML"),
             "run() should propagate parse error: {err}"

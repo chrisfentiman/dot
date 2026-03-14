@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use colored::Colorize;
 
 use crate::dotfiles::DotfContext;
+use crate::ui::UI;
 use crate::{dotfiles, secret};
 
 #[derive(Subcommand)]
@@ -25,22 +25,25 @@ pub enum SecretsAction {
     },
 }
 
-pub fn run(ctx: &DotfContext, action: SecretsAction) -> Result<()> {
+pub fn run(ui: &UI, ctx: &DotfContext, action: SecretsAction) -> Result<()> {
     match action {
-        SecretsAction::List => list(ctx),
-        SecretsAction::Validate => validate(ctx),
-        SecretsAction::Add { name, uri } => add(ctx, name, uri),
-        SecretsAction::Remove { name } => remove(ctx, name),
+        SecretsAction::List => list(ui, ctx),
+        SecretsAction::Validate => validate(ui, ctx),
+        SecretsAction::Add { name, uri } => add(ui, ctx, name, uri),
+        SecretsAction::Remove { name } => remove(ui, ctx, name),
     }
 }
 
-fn list(ctx: &DotfContext) -> Result<()> {
+fn list(ui: &UI, ctx: &DotfContext) -> Result<()> {
     let secrets = ctx.read_secrets()?;
 
     if secrets.secrets.is_empty() {
-        println!(
-            "No secrets configured. Run {} to add one.",
-            "dotf secrets add <name> <uri>".cyan()
+        ui.skip(
+            "Empty",
+            format!(
+                "No secrets configured. Run {} to add one.",
+                ui.highlight("dotf secrets add <name> <uri>")
+            ),
         );
         return Ok(());
     }
@@ -61,39 +64,33 @@ fn list(ctx: &DotfContext) -> Result<()> {
         .max(10);
     let backend_width = "BACKEND".len();
 
-    println!(
-        "{:<name_width$}  {:<uri_width$}  {}",
-        "PLACEHOLDER".bold(),
-        "SECRET URI".bold(),
-        "BACKEND".bold()
-    );
-    println!(
-        "{}",
-        "─"
-            .repeat(name_width + uri_width + backend_width + 4)
-            .dimmed()
-    );
+    ui.table_header(&[
+        ("PLACEHOLDER", name_width),
+        ("SECRET URI", uri_width),
+        ("BACKEND", backend_width),
+    ]);
+    ui.table_separator(name_width + uri_width + backend_width + 4);
 
     let mut entries: Vec<_> = secrets.secrets.iter().collect();
     entries.sort_by_key(|(k, _)| k.as_str());
 
     for (name, uri) in entries {
-        println!(
+        ui.table_row(format!(
             "{:<name_width$}  {:<uri_width$}  {}",
-            name.cyan(),
+            ui.highlight(name),
             uri,
-            secret::backend_name(uri).dimmed()
-        );
+            ui.dim(secret::backend_name(uri))
+        ));
     }
 
     Ok(())
 }
 
-fn validate(ctx: &DotfContext) -> Result<()> {
+fn validate(ui: &UI, ctx: &DotfContext) -> Result<()> {
     let secrets = ctx.read_secrets()?;
 
     if secrets.secrets.is_empty() {
-        println!("No secrets to validate.");
+        ui.skip("Empty", "No secrets to validate.");
         return Ok(());
     }
 
@@ -106,33 +103,37 @@ fn validate(ctx: &DotfContext) -> Result<()> {
     for (name, uri) in entries {
         match secret::fetch(uri) {
             Ok(_) => {
-                println!("{} {} ({})", "✓".green(), name.cyan(), uri.dimmed());
+                ui.raw(format!(
+                    "{} {} {}",
+                    ui.sym_ok(),
+                    ui.highlight(name),
+                    ui.dim(format!("({})", uri))
+                ));
                 passed += 1;
             }
             Err(e) => {
-                let err_str = e.to_string();
-                println!(
-                    "{} {} ({}) — {}",
-                    "✗".red(),
-                    name.cyan(),
-                    uri.dimmed(),
-                    err_str.red()
-                );
+                ui.raw(format!(
+                    "{} {} {} — {}",
+                    ui.sym_err(),
+                    ui.highlight(name),
+                    ui.dim(format!("({})", uri)),
+                    e
+                ));
                 failed += 1;
             }
         }
     }
 
-    println!();
-    println!(
+    ui.blank();
+    ui.raw(format!(
         "{} passed, {} failed",
-        passed.to_string().green(),
+        ui.bold(passed),
         if failed > 0 {
-            failed.to_string().red()
+            ui.bold(failed)
         } else {
-            failed.to_string().green()
+            ui.dim(failed)
         }
-    );
+    ));
 
     if failed > 0 {
         anyhow::bail!("{failed} secret(s) failed validation");
@@ -141,7 +142,7 @@ fn validate(ctx: &DotfContext) -> Result<()> {
     Ok(())
 }
 
-fn add(ctx: &DotfContext, name: String, uri: String) -> Result<()> {
+fn add(ui: &UI, ctx: &DotfContext, name: String, uri: String) -> Result<()> {
     if !dotfiles::is_valid_placeholder_name(&name) {
         anyhow::bail!(
             "Invalid placeholder name '{}': must be non-empty and contain only ASCII alphanumeric characters and underscores",
@@ -161,21 +162,21 @@ fn add(ctx: &DotfContext, name: String, uri: String) -> Result<()> {
         .context("Failed to write .secrets.toml")?;
 
     if existed {
-        println!("{} Updated {} -> {}", "✓".green(), name.cyan(), uri);
+        ui.action("Updated", format!("{} -> {}", ui.highlight(&name), uri));
     } else {
-        println!("{} Added {} -> {}", "✓".green(), name.cyan(), uri);
+        ui.action("Added", format!("{} -> {}", ui.highlight(&name), uri));
     }
     Ok(())
 }
 
-fn remove(ctx: &DotfContext, name: String) -> Result<()> {
+fn remove(ui: &UI, ctx: &DotfContext, name: String) -> Result<()> {
     let mut secrets = ctx.read_secrets()?;
     if secrets.secrets.remove(&name).is_none() {
         anyhow::bail!("Secret '{}' not found in .secrets.toml", name);
     }
     ctx.write_secrets(&secrets)
         .context("Failed to write .secrets.toml")?;
-    println!("{} Removed {}", "✓".green(), name.cyan());
+    ui.action("Removed", ui.highlight(&name));
     Ok(())
 }
 
@@ -214,7 +215,8 @@ mod tests {
     #[test]
     fn add_inserts_new_secret() {
         let _e = Env::new();
-        add(&ctx(), "FOO".into(), "env://FOO".into()).unwrap();
+        let ui = UI::new();
+        add(&ui, &ctx(), "FOO".into(), "env://FOO".into()).unwrap();
         let s = ctx().read_secrets().unwrap();
         assert_eq!(s.secrets["FOO"], "env://FOO");
     }
@@ -222,8 +224,9 @@ mod tests {
     #[test]
     fn add_overwrites_existing_secret() {
         let _e = Env::new();
-        add(&ctx(), "FOO".into(), "env://OLD".into()).unwrap();
-        add(&ctx(), "FOO".into(), "env://NEW".into()).unwrap();
+        let ui = UI::new();
+        add(&ui, &ctx(), "FOO".into(), "env://OLD".into()).unwrap();
+        add(&ui, &ctx(), "FOO".into(), "env://NEW".into()).unwrap();
         let s = ctx().read_secrets().unwrap();
         assert_eq!(s.secrets["FOO"], "env://NEW");
     }
@@ -232,8 +235,9 @@ mod tests {
     #[test]
     fn remove_deletes_existing_secret() {
         let _e = Env::new();
-        add(&ctx(), "BAR".into(), "env://BAR".into()).unwrap();
-        remove(&ctx(), "BAR".into()).unwrap();
+        let ui = UI::new();
+        add(&ui, &ctx(), "BAR".into(), "env://BAR".into()).unwrap();
+        remove(&ui, &ctx(), "BAR".into()).unwrap();
         let s = ctx().read_secrets().unwrap();
         assert!(!s.secrets.contains_key("BAR"));
     }
@@ -241,7 +245,8 @@ mod tests {
     #[test]
     fn remove_errors_on_missing_secret() {
         let _e = Env::new();
-        let err = remove(&ctx(), "NOPE".into()).unwrap_err();
+        let ui = UI::new();
+        let err = remove(&ui, &ctx(), "NOPE".into()).unwrap_err();
         assert!(err.to_string().contains("NOPE"));
     }
 
@@ -249,40 +254,51 @@ mod tests {
     #[test]
     fn validate_passes_when_env_secrets_present() {
         let _e = Env::new();
+        let ui = UI::new();
         let _val = crate::EnvGuard::set("_DOTF_TEST_VAL", "value");
-        add(&ctx(), "VAL".into(), "env://_DOTF_TEST_VAL".into()).unwrap();
-        validate(&ctx()).unwrap();
+        add(&ui, &ctx(), "VAL".into(), "env://_DOTF_TEST_VAL".into()).unwrap();
+        validate(&ui, &ctx()).unwrap();
     }
 
     #[test]
     fn validate_fails_when_secret_missing() {
         let _e = Env::new();
+        let ui = UI::new();
         unsafe {
             std::env::remove_var("_DOTF_TEST_ABSENT");
         }
-        add(&ctx(), "ABSENT".into(), "env://_DOTF_TEST_ABSENT".into()).unwrap();
-        let err = validate(&ctx()).unwrap_err();
+        add(
+            &ui,
+            &ctx(),
+            "ABSENT".into(),
+            "env://_DOTF_TEST_ABSENT".into(),
+        )
+        .unwrap();
+        let err = validate(&ui, &ctx()).unwrap_err();
         assert!(err.to_string().contains("failed validation"));
     }
 
     #[test]
     fn validate_empty_secrets_returns_ok() {
         let _e = Env::new();
-        validate(&ctx()).unwrap();
+        let ui = UI::new();
+        validate(&ui, &ctx()).unwrap();
     }
 
     // ── add validation ──────────────────────────────────────────
     #[test]
     fn add_rejects_invalid_placeholder_name() {
         let _e = Env::new();
-        let err = add(&ctx(), "invalid-name".into(), "env://FOO".into()).unwrap_err();
+        let ui = UI::new();
+        let err = add(&ui, &ctx(), "invalid-name".into(), "env://FOO".into()).unwrap_err();
         assert!(err.to_string().contains("Invalid placeholder name"));
     }
 
     #[test]
     fn add_rejects_invalid_uri_scheme() {
         let _e = Env::new();
-        let err = add(&ctx(), "FOO".into(), "https://example.com".into()).unwrap_err();
+        let ui = UI::new();
+        let err = add(&ui, &ctx(), "FOO".into(), "https://example.com".into()).unwrap_err();
         assert!(err.to_string().contains("Invalid secret URI"));
     }
 }

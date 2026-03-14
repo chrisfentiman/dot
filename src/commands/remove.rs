@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
-use colored::Colorize;
 use dialoguer::{Confirm, Select, theme::ColorfulTheme};
 use std::fs;
 
 use crate::dotfiles::DotfContext;
+use crate::ui::UI;
 
-pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
+pub fn run(ui: &UI, ctx: &DotfContext, name: Option<String>) -> Result<()> {
     let mut symlinks = ctx.read_symlinks()?;
 
     let config_name = match name {
@@ -41,21 +41,25 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
     let rendered_path = configs_dir.join(&config_name);
     let link_path = ctx.resolve_symlink_target(&target_str)?;
 
-    println!();
-    println!("This will:");
-    println!("  {} Remove symlink {}", "·".dimmed(), link_path.display());
-    println!(
+    ui.blank();
+    ui.raw("This will:");
+    ui.raw(format!(
+        "  {} Remove symlink {}",
+        ui.sym_dim(),
+        link_path.display()
+    ));
+    ui.raw(format!(
         "  {} Remove template {}",
-        "·".dimmed(),
+        ui.sym_dim(),
         template_path.display()
-    );
-    println!(
+    ));
+    ui.raw(format!(
         "  {} Remove rendered {}",
-        "·".dimmed(),
+        ui.sym_dim(),
         rendered_path.display()
-    );
-    println!("  {} Remove from .symlinks.toml", "·".dimmed());
-    println!();
+    ));
+    ui.raw(format!("  {} Remove from .symlinks.toml", ui.sym_dim()));
+    ui.blank();
 
     let restore = if rendered_path.exists() {
         Confirm::with_theme(&ColorfulTheme::default())
@@ -74,13 +78,13 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
         .context("Failed to read confirmation")?;
 
     if !confirmed {
-        println!("{} Aborted", "·".dimmed());
+        ui.skip("Aborted", "removal cancelled");
         return Ok(());
     }
 
     // Remove symlink — handle NotFound gracefully (race between check and delete).
     match fs::remove_file(&link_path) {
-        Ok(()) => println!("{} Removed symlink {}", "✓".green(), link_path.display()),
+        Ok(()) => ui.action("Removed", format!("symlink {}", link_path.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
             return Err(anyhow::Error::new(e)
@@ -99,16 +103,12 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
             use std::os::unix::fs::PermissionsExt;
             let _ = fs::set_permissions(&link_path, fs::Permissions::from_mode(0o644));
         }
-        println!("{} Restored file to {}", "✓".green(), link_path.display());
+        ui.action("Restored", format!("file to {}", link_path.display()));
     }
 
     // Remove template
     match fs::remove_file(&template_path) {
-        Ok(()) => println!(
-            "{} Removed template {}",
-            "✓".green(),
-            template_path.display()
-        ),
+        Ok(()) => ui.action("Removed", format!("template {}", template_path.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
             return Err(anyhow::Error::new(e)
@@ -118,10 +118,9 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
 
     // Remove rendered output
     match fs::remove_file(&rendered_path) {
-        Ok(()) => println!(
-            "{} Removed rendered file {}",
-            "✓".green(),
-            rendered_path.display()
+        Ok(()) => ui.action(
+            "Removed",
+            format!("rendered file {}", rendered_path.display()),
         ),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
@@ -134,14 +133,12 @@ pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
     symlinks.symlinks.remove(&config_name);
     ctx.write_symlinks(&symlinks)
         .context("Failed to update .symlinks.toml")?;
-    println!("{} Removed from .symlinks.toml", "✓".green());
+    ui.action("Removed", "from .symlinks.toml");
 
-    println!();
-    println!(
-        "{} '{}' is no longer managed by dotf",
-        "✓".green().bold(),
-        config_name.cyan()
-    );
+    ui.finished(format!(
+        "'{}' is no longer managed by dotf",
+        ui.highlight(&config_name)
+    ));
     Ok(())
 }
 
@@ -191,7 +188,8 @@ mod tests {
         let path = env.dotfiles().join(".symlinks.toml");
         std::fs::write(&path, toml::to_string_pretty(&sf).unwrap()).unwrap();
 
-        let err = super::run(&ctx(), Some("nonexistent".into())).unwrap_err();
+        let ui = crate::ui::UI::new();
+        let err = super::run(&ui, &ctx(), Some("nonexistent".into())).unwrap_err();
         assert!(
             err.to_string().contains("nonexistent"),
             "should name the missing config: {}",
@@ -203,7 +201,8 @@ mod tests {
     fn remove_named_config_from_empty_errors_with_name() {
         let env = Env::new();
         let _ = &env;
-        let err = super::run(&ctx(), Some("cfg".into())).unwrap_err();
+        let ui = crate::ui::UI::new();
+        let err = super::run(&ui, &ctx(), Some("cfg".into())).unwrap_err();
         assert!(
             err.to_string().contains("cfg"),
             "should name the missing config: {}",
