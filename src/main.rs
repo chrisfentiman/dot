@@ -1,6 +1,7 @@
 use dotf::commands;
 use dotf::dotfiles::{self, DotfContext};
 use dotf::runner::SystemRunner;
+use dotf::ui::UI;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
@@ -84,13 +85,14 @@ fn unwrap_or_exit<T>(result: anyhow::Result<T>) -> T {
 fn main() {
     let cli = Cli::parse();
 
+    let ui = UI::new();
     let result = match cli.command {
         Command::Init { path } => {
             let ctx = match path {
                 Some(p) => unwrap_or_exit(DotfContext::local_from_path(&p)),
                 None => DotfContext::global(),
             };
-            commands::init::run(&SystemRunner, &ctx)
+            commands::init::run(&ui, &SystemRunner, &ctx)
         }
         Command::Completions { shell } => {
             generate(shell, &mut Cli::command(), "dotf", &mut std::io::stdout());
@@ -103,13 +105,15 @@ fn main() {
                 unwrap_or_exit(dotfiles::resolve_context())
             };
             match cmd {
-                ScopedCommand::Config { path } => commands::config::run(&ctx, path),
-                ScopedCommand::Modify { name } => commands::modify::run(&SystemRunner, &ctx, name),
-                ScopedCommand::Diff { name } => commands::diff::run(&ctx, name),
-                ScopedCommand::Remove { name } => commands::remove::run(&ctx, name),
-                ScopedCommand::Sync => commands::sync::run(&SystemRunner, &ctx),
-                ScopedCommand::Secrets { action } => commands::secrets::run(&ctx, action),
-                ScopedCommand::Status => commands::status::run(&ctx),
+                ScopedCommand::Config { path } => commands::config::run(&ui, &ctx, path),
+                ScopedCommand::Modify { name } => {
+                    commands::modify::run(&ui, &SystemRunner, &ctx, name)
+                }
+                ScopedCommand::Diff { name } => commands::diff::run(&ui, &ctx, name),
+                ScopedCommand::Remove { name } => commands::remove::run(&ui, &ctx, name),
+                ScopedCommand::Sync => commands::sync::run(&ui, &SystemRunner, &ctx),
+                ScopedCommand::Secrets { action } => commands::secrets::run(&ui, &ctx, action),
+                ScopedCommand::Status => commands::status::run(&ui, &ctx),
             }
         }
     };
