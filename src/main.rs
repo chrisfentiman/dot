@@ -118,5 +118,15 @@ fn main() {
         }
     };
 
-    unwrap_or_exit(result);
+    if let Err(e) = result {
+        ui.blank();
+        ui.error("Error", &e);
+        let mut source = e.source();
+        while let Some(cause) = source {
+            ui.hint(format!("caused by: {cause}"));
+            source = cause.source();
+        }
+        ui.blank();
+        std::process::exit(1);
+    }
 }

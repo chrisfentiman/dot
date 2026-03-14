@@ -79,10 +79,10 @@ pub fn run(ui: &UI, ctx: &DotfContext) -> Result<()> {
     let statuses = collect_statuses(ctx)?;
 
     if statuses.is_empty() {
-        ui.skip(
-            "Info",
+        ui.action(
+            "Status",
             format!(
-                "No managed configs. Run {} to add one.",
+                "no managed configs — run {} to add one",
                 ui.highlight("dotf config <path>")
             ),
         );

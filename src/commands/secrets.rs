@@ -38,10 +38,10 @@ fn list(ui: &UI, ctx: &DotfContext) -> Result<()> {
     let secrets = ctx.read_secrets()?;
 
     if secrets.secrets.is_empty() {
-        ui.skip(
-            "Empty",
+        ui.action(
+            "Secrets",
             format!(
-                "No secrets configured. Run {} to add one.",
+                "none configured — run {} to add one",
                 ui.highlight("dotf secrets add <name> <uri>")
             ),
         );
@@ -90,7 +90,7 @@ fn validate(ui: &UI, ctx: &DotfContext) -> Result<()> {
     let secrets = ctx.read_secrets()?;
 
     if secrets.secrets.is_empty() {
-        ui.skip("Empty", "No secrets to validate.");
+        ui.action("Validate", "no secrets configured");
         return Ok(());
     }
 
