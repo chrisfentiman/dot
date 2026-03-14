@@ -161,7 +161,7 @@ fn fetch_pass_with(
     run_secret_cli(
         runner,
         "pass",
-        &["item", "get", &full_uri, "--fields", "password"],
+        &["item", "get", "--fields", "password", "--", &full_uri],
         Vec::new(),
         "Proton Pass",
         "Install: brew install protonpass/pass/pass",
@@ -189,7 +189,7 @@ fn fetch_op_with(
     run_secret_cli(
         runner,
         "op",
-        &["read", &full_uri],
+        &["read", "--", &full_uri],
         op_vars,
         "1Password",
         "Install: brew install 1password-cli",
@@ -228,7 +228,7 @@ fn fetch_bw_with(
     run_secret_cli(
         runner,
         "bw",
-        &["get", subcommand, item],
+        &["get", subcommand, "--", item],
         forwarded_env(&["BW_SESSION"]),
         "Bitwarden",
         "Install: brew install bitwarden-cli\n  Requires BW_SESSION env var (run: export BW_SESSION=$(bw unlock --raw))",
@@ -628,9 +628,10 @@ mod tests {
             &[
                 "item",
                 "get",
-                "pass://vault/item/field",
                 "--fields",
                 "password",
+                "--",
+                "pass://vault/item/field",
             ],
             b"s3cret\n",
         );
@@ -645,7 +646,7 @@ mod tests {
     fn fetch_op_with_constructs_correct_args() {
         let runner = MockSecretRunner::new().on_success(
             "op",
-            &["read", "op://vault/item/field"],
+            &["read", "--", "op://vault/item/field"],
             b"op-secret\n",
         );
         let result = fetch_op_with("vault/item/field", "op://vault/item/field", &runner).unwrap();
@@ -658,7 +659,8 @@ mod tests {
         let _session = crate::EnvGuard::set("OP_SESSION_myacct", "tok123");
         let _sa_tok = crate::EnvGuard::set("OP_SERVICE_ACCOUNT_TOKEN", "sa-tok");
 
-        let runner = MockSecretRunner::new().on_success("op", &["read", "op://v/i/f"], b"val");
+        let runner =
+            MockSecretRunner::new().on_success("op", &["read", "--", "op://v/i/f"], b"val");
         fetch_op_with("v/i/f", "op://v/i/f", &runner).unwrap();
 
         let envs = runner.captured_envs.borrow();
@@ -681,7 +683,8 @@ mod tests {
         let long_key = format!("OP_SESSION_{}", "x".repeat(30));
         let _long = crate::EnvGuard::set(&long_key, "val");
 
-        let runner = MockSecretRunner::new().on_success("op", &["read", "op://v/i/f"], b"val");
+        let runner =
+            MockSecretRunner::new().on_success("op", &["read", "--", "op://v/i/f"], b"val");
         fetch_op_with("v/i/f", "op://v/i/f", &runner).unwrap();
 
         let envs = runner.captured_envs.borrow();
@@ -696,16 +699,22 @@ mod tests {
 
     #[test]
     fn fetch_bw_with_password_field() {
-        let runner =
-            MockSecretRunner::new().on_success("bw", &["get", "password", "myitem"], b"pw123\n");
+        let runner = MockSecretRunner::new().on_success(
+            "bw",
+            &["get", "password", "--", "myitem"],
+            b"pw123\n",
+        );
         let result = fetch_bw_with("myitem/password", "bw://myitem/password", &runner).unwrap();
         assert_eq!(result.as_str(), "pw123");
     }
 
     #[test]
     fn fetch_bw_with_username_field() {
-        let runner =
-            MockSecretRunner::new().on_success("bw", &["get", "username", "myitem"], b"user1");
+        let runner = MockSecretRunner::new().on_success(
+            "bw",
+            &["get", "username", "--", "myitem"],
+            b"user1",
+        );
         let result = fetch_bw_with("myitem/username", "bw://myitem/username", &runner).unwrap();
         assert_eq!(result.as_str(), "user1");
     }
@@ -713,15 +722,18 @@ mod tests {
     #[test]
     fn fetch_bw_with_no_field_defaults_to_password() {
         let runner =
-            MockSecretRunner::new().on_success("bw", &["get", "password", "myitem"], b"pw");
+            MockSecretRunner::new().on_success("bw", &["get", "password", "--", "myitem"], b"pw");
         let result = fetch_bw_with("myitem", "bw://myitem", &runner).unwrap();
         assert_eq!(result.as_str(), "pw");
     }
 
     #[test]
     fn fetch_bw_with_notes_field() {
-        let runner =
-            MockSecretRunner::new().on_success("bw", &["get", "notes", "myitem"], b"some notes");
+        let runner = MockSecretRunner::new().on_success(
+            "bw",
+            &["get", "notes", "--", "myitem"],
+            b"some notes",
+        );
         let result = fetch_bw_with("myitem/notes", "bw://myitem/notes", &runner).unwrap();
         assert_eq!(result.as_str(), "some notes");
     }
@@ -730,7 +742,7 @@ mod tests {
     fn fetch_bw_with_uri_field() {
         let runner = MockSecretRunner::new().on_success(
             "bw",
-            &["get", "uri", "myitem"],
+            &["get", "uri", "--", "myitem"],
             b"https://example.com",
         );
         let result = fetch_bw_with("myitem/uri", "bw://myitem/uri", &runner).unwrap();
