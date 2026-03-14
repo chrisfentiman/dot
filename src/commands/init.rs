@@ -49,6 +49,24 @@ fn run_local(ctx: &DotfContext) -> Result<()> {
     let dotf_dir = ctx.dotfiles_dir()?;
     let configs_dir = ctx.configs_dir()?;
 
+    // Warn if a parent directory already has .dotf/ — creating a nested one
+    // is almost certainly a mistake.
+    if let DotfMode::Local(root) = &ctx.mode
+        && let Some(parent) = root.parent()
+        && let Some(existing) = dotfiles::find_dotf_root(parent)
+    {
+        println!(
+            "{} A .dotf/ directory already exists at {}",
+            "!".yellow(),
+            existing.display()
+        );
+        println!(
+            "  Creating a nested .dotf/ at {} — is this intentional?",
+            root.display()
+        );
+        println!();
+    }
+
     fs::create_dir_all(&configs_dir)
         .with_context(|| format!("Failed to create {}", configs_dir.display()))?;
     println!("{} Created {}", "✓".green(), dotf_dir.display());
@@ -97,7 +115,7 @@ fn run_local(ctx: &DotfContext) -> Result<()> {
     if synced.is_empty() {
         println!(
             "  No configs yet. Run {} to add one.",
-            "dotf --dir . config <path>".cyan()
+            "dotf config <path>".cyan()
         );
     } else {
         println!("  Symlinked configs:");
@@ -117,7 +135,20 @@ fn setup_dotfiles_dir(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
         return Ok(());
     }
 
-    println!("{}", "~/dotfiles not found.".yellow());
+    // Migration hint: if old ~/dotfiles exists, tell the user.
+    // We know ~/.dotf doesn't exist here (early return above).
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+    let old_dotfiles = home.join("dotfiles");
+    if old_dotfiles.exists() {
+        println!(
+            "{} Found existing ~/dotfiles — dotf now uses ~/.dotf/",
+            "!".yellow()
+        );
+        println!("  Run: mv ~/dotfiles ~/.dotf");
+        println!();
+    }
+
+    println!("{}", "~/.dotf not found.".yellow());
 
     let url: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Git repo URL to clone (leave blank to create fresh repo)")
@@ -332,7 +363,7 @@ mod tests {
     fn init_env_with_dotfiles() -> InitEnv {
         let lock = crate::env_lock();
         let tmp = TempDir::new().unwrap();
-        let dotfiles = tmp.path().join("dotfiles");
+        let dotfiles = tmp.path().join(".dotf");
         std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
         std::fs::write(dotfiles.join(".symlinks.toml"), "[symlinks]\n").unwrap();
         std::fs::write(dotfiles.join(".secrets.toml"), "[secrets]\n").unwrap();
@@ -350,5 +381,121 @@ mod tests {
         let runner = MockRunner::new().allow_unmatched();
         let ctx = DotfContext::global();
         run(&runner, &ctx).unwrap();
+    }
+
+    #[test]
+    fn run_local_creates_dotf_and_gitignore() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let ctx = DotfContext::local(root.clone());
+
+        run_local(&ctx).unwrap();
+
+        // .dotf/configs/ must exist
+        assert!(root.join(".dotf/configs").is_dir());
+
+        // .gitignore must contain the expected entries
+        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert!(
+            gitignore.contains(".dotf/configs/*"),
+            "missing .dotf/configs/* in .gitignore"
+        );
+        assert!(
+            gitignore.contains("!.dotf/configs/*.tmpl"),
+            "missing !.dotf/configs/*.tmpl in .gitignore"
+        );
+        assert!(
+            gitignore.contains(".dotf/.secrets.toml"),
+            "missing .dotf/.secrets.toml in .gitignore"
+        );
+    }
+
+    #[test]
+    fn run_local_gitignore_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let ctx = DotfContext::local(root.clone());
+
+        // Run twice
+        run_local(&ctx).unwrap();
+        run_local(&ctx).unwrap();
+
+        // .gitignore entries must not be duplicated
+        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
+        let count = gitignore
+            .lines()
+            .filter(|l| l.trim() == ".dotf/configs/*")
+            .count();
+        assert_eq!(
+            count, 1,
+            "gitignore entry duplicated: found {count} occurrences"
+        );
+    }
+
+    #[test]
+    fn run_local_preserves_existing_gitignore() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        // Write a pre-existing .gitignore
+        std::fs::write(root.join(".gitignore"), "node_modules/\n*.log\n").unwrap();
+
+        let ctx = DotfContext::local(root.clone());
+        run_local(&ctx).unwrap();
+
+        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert!(
+            gitignore.contains("node_modules/"),
+            "existing .gitignore content was lost"
+        );
+        assert!(
+            gitignore.contains(".dotf/configs/*"),
+            "dotf entries not added"
+        );
+    }
+
+    #[test]
+    fn run_local_gitignore_no_trailing_newline() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        // Existing .gitignore without trailing newline
+        std::fs::write(root.join(".gitignore"), "existing").unwrap();
+
+        let ctx = DotfContext::local(root.clone());
+        run_local(&ctx).unwrap();
+
+        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
+        // Must have a newline between existing content and new entries
+        assert!(
+            gitignore.starts_with("existing\n"),
+            "missing newline separator: {gitignore:?}"
+        );
+        assert!(
+            gitignore.contains(".dotf/configs/*"),
+            "dotf entries not added"
+        );
+    }
+
+    #[test]
+    fn run_local_gitignore_empty_file() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        // Empty .gitignore — should not add a leading blank line
+        std::fs::write(root.join(".gitignore"), "").unwrap();
+
+        let ctx = DotfContext::local(root.clone());
+        run_local(&ctx).unwrap();
+
+        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert!(
+            !gitignore.starts_with('\n'),
+            "empty file should not get leading blank line: {gitignore:?}"
+        );
+        assert!(
+            gitignore.contains(".dotf/configs/*"),
+            "dotf entries not added"
+        );
     }
 }

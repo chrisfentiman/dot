@@ -243,6 +243,7 @@ dependencies = [
  "colored",
  "dialoguer",
  "dirs",
+ "libc",
  "serde",
  "similar",
  "tempfile",

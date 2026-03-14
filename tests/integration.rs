@@ -67,7 +67,7 @@ impl TestEnv {
 
         let home = TempDir::new().unwrap();
         let home_path = home.path().to_path_buf();
-        let dotfiles = home_path.join("dotfiles");
+        let dotfiles = home_path.join(".dotf");
         let configs = dotfiles.join("configs");
         fs::create_dir_all(&configs).unwrap();
 
@@ -92,7 +92,7 @@ impl TestEnv {
     }
 
     fn write_secrets_toml(&self, pairs: &[(&str, &str)]) {
-        let dotfiles = self.home_path.join("dotfiles");
+        let dotfiles = self.home_path.join(".dotf");
         let mut toml = String::from("[secrets]\n");
         for (k, v) in pairs {
             toml.push_str(&format!("\"{k}\" = \"{v}\"\n"));
@@ -101,7 +101,7 @@ impl TestEnv {
     }
 
     fn write_symlinks_toml(&self, pairs: &[(&str, &str)]) {
-        let dotfiles = self.home_path.join("dotfiles");
+        let dotfiles = self.home_path.join(".dotf");
         let mut toml = String::from("[symlinks]\n");
         for (k, v) in pairs {
             toml.push_str(&format!("\"{k}\" = \"{v}\"\n"));

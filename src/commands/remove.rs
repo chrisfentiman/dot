@@ -162,7 +162,7 @@ mod tests {
         fn new() -> Self {
             let _lock = crate::env_lock();
             let tmp = TempDir::new().unwrap();
-            let dotfiles = tmp.path().join("dotfiles");
+            let dotfiles = tmp.path().join(".dotf");
             std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
             let _home_guard = crate::EnvGuard::set("HOME", &tmp.path().to_string_lossy());
             Env {
@@ -173,7 +173,7 @@ mod tests {
         }
 
         fn dotfiles(&self) -> std::path::PathBuf {
-            self._tmp.path().join("dotfiles")
+            self._tmp.path().join(".dotf")
         }
     }
 

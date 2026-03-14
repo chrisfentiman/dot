@@ -62,3 +62,19 @@ path = "fuzz_targets/fuzz_toml_parse.rs"
 test = false
 doc = false
 bench = false
+
+# fuzz_find_dotf_root: fuzz git-style .dotf/ walk-up detection
+[[bin]]
+name = "fuzz_find_dotf_root"
+path = "fuzz_targets/fuzz_find_dotf_root.rs"
+test = false
+doc = false
+bench = false
+
+# fuzz_validation: fuzz placeholder name and secret URI validation
+[[bin]]
+name = "fuzz_validation"
+path = "fuzz_targets/fuzz_validation.rs"
+test = false
+doc = false
+bench = false

@@ -29,6 +29,9 @@ similar = "2"
 tempfile = "3"
 zeroize = "1"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 
 [profile.release]

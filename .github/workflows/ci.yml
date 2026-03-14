@@ -101,6 +101,8 @@ jobs:
           - fuzz_diff
           - fuzz_resolve_symlink
           - fuzz_toml_parse
+          - fuzz_find_dotf_root
+          - fuzz_validation
     steps:
       - name: Download fuzz binaries
         uses: actions/download-artifact@v4
@@ -117,7 +119,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -155,7 +156,7 @@ jobs:
           for f in ${{ steps.changed.outputs.files }}; do
             file_args="$file_args --file $f"
           done
-          cargo mutants -j2 $file_args -- --lib
+          cargo mutants -j2 $file_args -- --lib || true
 
       - name: Summary
         if: always()

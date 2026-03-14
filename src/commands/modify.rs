@@ -87,7 +87,7 @@ mod tests {
         let _home = crate::EnvGuard::set("HOME", tmp.path().to_str().unwrap());
         let _editor = crate::EnvGuard::set("EDITOR", "false-editor");
 
-        let dotfiles_dir = tmp.path().join("dotfiles");
+        let dotfiles_dir = tmp.path().join(".dotf");
         std::fs::create_dir_all(dotfiles_dir.join("configs")).unwrap();
         std::fs::write(dotfiles_dir.join("configs/gitconfig.tmpl"), "key = value").unwrap();
 

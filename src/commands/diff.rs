@@ -8,6 +8,8 @@ use crate::dotfiles;
 use crate::dotfiles::DotfContext;
 
 pub fn run(ctx: &DotfContext, name: Option<String>) -> Result<()> {
+    ctx.print_mode_header();
+
     let symlinks = ctx.read_symlinks()?;
 
     if symlinks.symlinks.is_empty() {

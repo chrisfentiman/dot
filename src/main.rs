@@ -1,5 +1,5 @@
 use dotf::commands;
-use dotf::dotfiles::DotfContext;
+use dotf::dotfiles::{self, DotfContext};
 use dotf::runner::SystemRunner;
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -8,11 +8,9 @@ use clap_complete::{Shell, generate};
 #[derive(Parser)]
 #[command(name = "dotf", about = "Personal dotfiles manager", version)]
 struct Cli {
-    /// Use a project-local .dotf/ directory instead of ~/dotfiles.
-    /// Pass a directory path (e.g. --dir . for the current directory).
-    #[arg(long, global = true, value_name = "PATH")]
-    dir: Option<std::path::PathBuf>,
-
+    /// Force global mode (~/.dotf) regardless of current directory
+    #[arg(long, short = 'G', global = true)]
+    global: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -20,7 +18,23 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// First-time setup on a new machine
-    Init,
+    Init {
+        /// Optional path for project-local init (omit for global ~/.dotf/ init)
+        path: Option<std::path::PathBuf>,
+    },
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+    /// Commands that auto-detect scope from the current directory
+    #[command(flatten)]
+    Scoped(ScopedCommand),
+}
+
+#[derive(Subcommand)]
+enum ScopedCommand {
     /// Add a config file to be managed
     Config {
         /// Path to the config file to manage (e.g. ~/.gitconfig)
@@ -50,54 +64,55 @@ enum Command {
     },
     /// Show status of managed configs
     Status,
-    /// Generate shell completions
-    Completions {
-        /// Shell to generate completions for
-        #[arg(value_enum)]
-        shell: Shell,
-    },
+}
+
+fn unwrap_or_exit<T>(result: anyhow::Result<T>) -> T {
+    match result {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("error: {e}");
+            let mut source = e.source();
+            while let Some(cause) = source {
+                eprintln!("  caused by: {cause}");
+                source = cause.source();
+            }
+            std::process::exit(1);
+        }
+    }
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    let ctx = match cli.dir {
-        Some(dir) => {
-            let abs = match std::path::absolute(&dir) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("error: --dir path '{}': {}", dir.display(), e);
-                    std::process::exit(1);
-                }
-            };
-            DotfContext::local(abs)
-        }
-        None => DotfContext::global(),
-    };
-
     let result = match cli.command {
-        Command::Init => commands::init::run(&SystemRunner, &ctx),
-        Command::Config { path } => commands::config::run(&ctx, path),
-        Command::Modify { name } => commands::modify::run(&SystemRunner, &ctx, name),
-        Command::Diff { name } => commands::diff::run(&ctx, name),
-        Command::Remove { name } => commands::remove::run(&ctx, name),
-        Command::Sync => commands::sync::run(&SystemRunner, &ctx),
-        Command::Secrets { action } => commands::secrets::run(&ctx, action),
-        Command::Status => commands::status::run(&ctx),
+        Command::Init { path } => {
+            let ctx = match path {
+                Some(p) => unwrap_or_exit(DotfContext::local_from_path(&p)),
+                None => DotfContext::global(),
+            };
+            commands::init::run(&SystemRunner, &ctx)
+        }
         Command::Completions { shell } => {
             generate(shell, &mut Cli::command(), "dotf", &mut std::io::stdout());
             Ok(())
         }
+        Command::Scoped(cmd) => {
+            let ctx = if cli.global {
+                DotfContext::global()
+            } else {
+                unwrap_or_exit(dotfiles::resolve_context())
+            };
+            match cmd {
+                ScopedCommand::Config { path } => commands::config::run(&ctx, path),
+                ScopedCommand::Modify { name } => commands::modify::run(&SystemRunner, &ctx, name),
+                ScopedCommand::Diff { name } => commands::diff::run(&ctx, name),
+                ScopedCommand::Remove { name } => commands::remove::run(&ctx, name),
+                ScopedCommand::Sync => commands::sync::run(&SystemRunner, &ctx),
+                ScopedCommand::Secrets { action } => commands::secrets::run(&ctx, action),
+                ScopedCommand::Status => commands::status::run(&ctx),
+            }
+        }
     };
 
-    if let Err(e) = result {
-        eprintln!("error: {e}");
-        // Print error chain (causes) if present.
-        let mut source = e.source();
-        while let Some(cause) = source {
-            eprintln!("  caused by: {cause}");
-            source = cause.source();
-        }
-        std::process::exit(1);
-    }
+    unwrap_or_exit(result);
 }
