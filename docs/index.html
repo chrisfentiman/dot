@@ -761,7 +761,7 @@
         </p>
         <div class="code-block">
           <div class="code-header">
-            <span class="code-fname">~/dotfiles/configs/.gitconfig.tmpl</span>
+            <span class="code-fname">~/.dotf/configs/.gitconfig.tmpl</span>
             <span class="code-badge badge-good">safe to commit</span>
           </div>
           <div class="code-body"><span class="t-muted">[user]</span>
@@ -773,7 +773,7 @@
         </div>
         <div class="code-block" style="margin-top:10px">
           <div class="code-header">
-            <span class="code-fname">~/dotfiles/.secrets.toml</span>
+            <span class="code-fname">~/.dotf/.secrets.toml</span>
             <span class="code-badge badge-good">safe to commit</span>
           </div>
           <div class="code-body"><span class="t-muted">[secrets]</span>
@@ -989,7 +989,7 @@
   <div class="container fade">
     <p class="sec-label">project-local mode</p>
     <h2 class="sec-title">Same mechanism. Project scope.</h2>
-    <p class="sec-sub">The <code style="font-family:var(--mono);font-size:13px;background:var(--border);padding:2px 6px;border-radius:3px;">--dir</code> flag switches dotf from global dotfiles to project-scoped configs. Templates and URI mappings commit to your project repo. Rendered files with real values stay out.</p>
+    <p class="sec-sub">dotf auto-detects scope by walking up from your current directory looking for a <code style="font-family:var(--mono);font-size:13px;background:var(--border);padding:2px 6px;border-radius:3px;">.dotf/</code> directory (like git finds <code style="font-family:var(--mono);font-size:13px;background:var(--border);padding:2px 6px;border-radius:3px;">.git/</code>). Templates and URI mappings commit to your project repo. Rendered files with real values stay out.</p>
 
     <div class="problem-body" style="margin-top:40px;">
       <div class="problem-text">
@@ -1006,13 +1006,13 @@
           <span class="code-badge badge-good">local mode</span>
         </div>
         <div class="code-body"><span class="t-cmt"># set up local mode in your project</span>
-<span class="t-muted">$</span> <span class="t-key">dotf --dir . init</span>
+<span class="t-muted">$</span> <span class="t-key">dotf init .</span>
 
 <span class="t-cmt"># add .env with secrets extracted</span>
-<span class="t-muted">$</span> <span class="t-key">dotf --dir . config .env</span>
+<span class="t-muted">$</span> <span class="t-key">dotf config .env</span>
 
 <span class="t-cmt"># render templates (no git operations)</span>
-<span class="t-muted">$</span> <span class="t-key">dotf --dir . sync</span>
+<span class="t-muted">$</span> <span class="t-key">dotf sync</span>
 
 <span class="t-cmt"># result:</span>
 <span class="t-muted">myproject/</span>
@@ -1052,7 +1052,7 @@
             <td class="yes">{{VAR}} syntax</td>
             <td class="yes">Declarative .secrets.toml</td>
             <td class="yes">.symlinks.toml</td>
-            <td class="yes">--dir flag</td>
+            <td class="yes">Auto-detect .dotf/</td>
             <td>Rust binary</td>
             <td class="yes">Low</td>
           </tr>
@@ -1256,7 +1256,7 @@
         { c: 'muted', v: 'Secret URI (e.g. op://... pass://... env://...): op://personal/github/email' },
         { c: 'muted', v: 'Another secret? [y/n]: n' },
         { c: 'dim',   v: '' },
-        { c: 'ok',    v: '✓  Template written to ~/dotfiles/configs/.gitconfig.tmpl' },
+        { c: 'ok',    v: '✓  Template written to ~/.dotf/configs/.gitconfig.tmpl' },
         { c: 'ok',    v: '✓  Added 1 secret to .secrets.toml' },
         { c: 'ok',    v: '✓  Rendered and symlinked ~/.gitconfig' },
       ]
@@ -1283,7 +1283,7 @@
       ]
     },
     init: {
-      desc: '<strong>dotf init</strong> — first-time setup on a new machine. Clones your dotfiles repo, reads <code>.secrets.toml</code> to check which backend CLIs are installed, runs your Brewfile if one exists, then renders all templates and lays down symlinks. No manual hunting for what secrets go where.',
+      desc: '<strong>dotf init [path]</strong> — first-time setup on a new machine (or project). Clones your dotfiles repo, reads <code>.secrets.toml</code> to check which backend CLIs are installed, runs your Brewfile if one exists, then renders all templates and lays down symlinks. Pass an optional path to init a project-local scope.',
       lines: [
         { c: 'cmd',   v: 'dotf init' },
         { c: 'dim',   v: '' },
@@ -1294,7 +1294,7 @@
         { c: 'dim',   v: '' },
         { c: 'muted', v: 'Git repo URL to clone: git@github.com:chris/dotfiles.git' },
         { c: 'muted', v: 'Cloning git@github.com:chris/dotfiles.git...' },
-        { c: 'ok',    v: '✓  Cloned dotfiles to ~/dotfiles' },
+        { c: 'ok',    v: '✓  Cloned dotfiles to ~/.dotf' },
         { c: 'ok',    v: '✓  1Password CLI (op) available' },
         { c: 'dim',   v: '·  No Brewfile found, skipping brew bundle' },
         { c: 'dim',   v: '' },
@@ -1350,8 +1350,8 @@
         { c: 'dim',   v: '' },
         { c: 'muted', v: 'This will:' },
         { c: 'muted', v: '  ·  Remove symlink ~/.npmrc' },
-        { c: 'muted', v: '  ·  Remove template ~/dotfiles/configs/.npmrc.tmpl' },
-        { c: 'muted', v: '  ·  Remove rendered ~/dotfiles/configs/.npmrc' },
+        { c: 'muted', v: '  ·  Remove template ~/.dotf/configs/.npmrc.tmpl' },
+        { c: 'muted', v: '  ·  Remove rendered ~/.dotf/configs/.npmrc' },
         { c: 'muted', v: '  ·  Remove from .symlinks.toml' },
         { c: 'dim',   v: '' },
         { c: 'muted', v: 'Restore rendered file to ~/.npmrc? [Y/n]: Y' },
@@ -1370,11 +1370,11 @@
       lines: [
         { c: 'cmd',   v: 'dotf modify .zshrc' },
         { c: 'dim',   v: '' },
-        { c: 'muted', v: '# opening ~/dotfiles/configs/.zshrc.tmpl in nvim' },
+        { c: 'muted', v: '# opening ~/.dotf/configs/.zshrc.tmpl in nvim' },
         { c: 'muted', v: '# ... edit, save, quit ...' },
         { c: 'dim',   v: '' },
         { c: 'ok',    v: '✓  Re-rendered .zshrc' },
-        { c: 'ok',    v: '✓  Symlink up to date: ~/.zshrc → ~/dotfiles/configs/.zshrc' },
+        { c: 'ok',    v: '✓  Symlink up to date: ~/.zshrc → ~/.dotf/configs/.zshrc' },
         { c: 'ok',    v: '✓  .zshrc updated' },
       ]
     },

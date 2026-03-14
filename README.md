@@ -2,7 +2,7 @@
 
 Your dotfiles belong in git. Your secrets don't.
 
-`dotf` is a single Rust binary that manages dotfiles with template rendering and pluggable secret injection. Templates go in git, secret values stay in your password manager. Works at two scales: global dotfiles (`~/dotfiles`) synced across machines, and project-local configs (`.env`, `.claude/settings.json`) scoped to a single repo via `--dir`.
+`dotf` is a single Rust binary that manages dotfiles with template rendering and pluggable secret injection. Templates go in git, secret values stay in your password manager. Works at two scales: global dotfiles (`~/.dotf`) synced across machines, and project-local configs (`.env`, `.claude/settings.json`) auto-detected from the current working directory.
 
 ```sh
 brew tap chrisfentiman/dotf && brew install dotf
@@ -26,7 +26,7 @@ Existing dotfiles tools solve one piece but not the whole problem:
 | **rcm** | -- | -- | Tag-based | -- | No templates, no secrets, no encryption. Unix only, low activity. |
 | **chezmoi** | Go `text/template` | GPG/age + PM integrations | -- (copies) | -- | Secrets embedded in template syntax. Steep learning curve. |
 | **home-manager** | Nix expressions | agenix/sops-nix | Nix-managed | -- | Requires learning Nix. Overkill for config files. |
-| **dotf** | `{{PLACEHOLDER}}` | Declarative `.secrets.toml` | `.symlinks.toml` | `--dir` | -- |
+| **dotf** | `{{PLACEHOLDER}}` | Declarative `.secrets.toml` | `.symlinks.toml` | Auto-detected | -- |
 
 dotf fixes this by making the secrets part of the repo -- not their *values*, their *locations*. Every secret becomes a placeholder that maps to a URI in your password manager. At sync time, dotf fetches and injects them. Git only ever sees the template.
 
@@ -35,7 +35,7 @@ dotf fixes this by making the secrets part of the repo -- not their *values*, th
 You have a `.gitconfig` with your email in it. You want the file in git. You don't want your email in git.
 
 ```
-# ~/dotfiles/configs/.gitconfig.tmpl  <-- committed to git
+# ~/.dotf/configs/.gitconfig.tmpl  <-- committed to git
 [user]
   name  = Chris Fentiman
   email = {{GIT_EMAIL}}
@@ -45,7 +45,7 @@ You have a `.gitconfig` with your email in it. You want the file in git. You don
 ```
 
 ```toml
-# ~/dotfiles/.secrets.toml  <-- committed to git (URIs only, never values)
+# ~/.dotf/.secrets.toml  <-- committed to git (URIs only, never values)
 [secrets]
 GIT_EMAIL    = "op://personal/github/email"
 GITHUB_TOKEN = "op://personal/github/token"
@@ -55,7 +55,7 @@ When you run `dotf sync`:
 
 1. Fetches `op://personal/github/email` from 1Password
 2. Renders the template with the real values
-3. Writes `~/dotfiles/configs/.gitconfig` (gitignored, `0o600` permissions)
+3. Writes `~/.dotf/configs/.gitconfig` (gitignored, `0o600` permissions)
 4. Symlinks `~/.gitconfig` to the rendered file
 5. Commits and pushes the dotfiles repo
 
@@ -115,7 +115,7 @@ Backends are pluggable -- adding a new one is a single match arm in `src/secret.
 
 | Command | Description |
 |---|---|
-| `dotf init` | Clone dotfiles repo, check CLIs, install completions, render all templates |
+| `dotf init [path]` | Clone dotfiles repo, check CLIs, install completions, render all templates |
 | `dotf config <path>` | Add a config file -- interactively extract secrets into `{{PLACEHOLDERS}}` |
 | `dotf modify [name]` | Edit a template in `$EDITOR`, re-render on save |
 | `dotf sync` | `git pull --rebase`, render all templates, commit and push |
@@ -130,16 +130,16 @@ Backends are pluggable -- adding a new one is a single match arm in `src/secret.
 
 ## Project-local mode
 
-The `--dir` flag switches dotf from managing global dotfiles (`~/dotfiles`) to managing project-scoped configs. Same template + secret mechanism, scoped to a single repo.
+dotf uses git-style auto-detection to find the right context. When you run any command, dotf walks up from the current working directory looking for a `.dotf/` directory. If it finds one, it operates in project-local mode scoped to that project. If none is found, it falls back to the global `~/.dotf/` directory. No flag needed.
 
 ```sh
 cd ~/Development/myproject
-dotf --dir . init            # creates .dotf/ directory
-dotf --dir . config .env     # template + secrets for .env
-dotf --dir . sync            # render only, no git operations
+dotf init .                  # creates .dotf/ directory in current dir
+dotf config .env             # template + secrets for .env (auto-detected from cwd)
+dotf sync                    # render only, no git operations (auto-detected from cwd)
 ```
 
-The `.env.tmpl` template and `.secrets.toml` are committed to your project repo. The rendered `.env` (with real values) is gitignored. New contributors clone the repo, run `dotf --dir . sync`, and get a working `.env` without Slack messages or shared password docs.
+The `.env.tmpl` template and `.secrets.toml` are committed to your project repo. The rendered `.env` (with real values) is gitignored. New contributors clone the repo, run `dotf sync` from inside the project, and get a working `.env` without Slack messages or shared password docs.
 
 ```
 myproject/
@@ -162,10 +162,10 @@ This is useful for any project config that has secrets: `.env`, `.claude/setting
 
 ## File layout
 
-### Global (`~/dotfiles`)
+### Global (`~/.dotf`)
 
 ```
-~/dotfiles/
+~/.dotf/
   configs/
     .gitconfig.tmpl     <-- template, committed
     .gitconfig          <-- rendered output, gitignored
@@ -177,9 +177,9 @@ This is useful for any project config that has secrets: `.env`, `.claude/setting
   Brewfile              <-- optional, run by dotf init
 ```
 
-`~/.gitconfig` is a symlink to `~/dotfiles/configs/.gitconfig`, which is rendered from `.gitconfig.tmpl` at sync time.
+`~/.gitconfig` is a symlink to `~/.dotf/configs/.gitconfig`, which is rendered from `.gitconfig.tmpl` at sync time.
 
-### Local (`--dir .`)
+### Local (auto-detected from cwd)
 
 ```
 myproject/
@@ -216,7 +216,7 @@ dotf is for the common case: config files with some secrets that you want in git
 | **Secrets in templates** | Embedded: `{{ (bitwarden "item").password }}` | Separated: template says `{{DB_PASS}}`, `.secrets.toml` maps it to `bw://db/password` |
 | **Switch password managers** | Edit every template that references the old backend | Change one line in `.secrets.toml` |
 | **File management** | Copies files from source to target | Symlinks to rendered files |
-| **Project-local configs** | Global only (`~/.local/share/chezmoi`) | `--dir .` for per-project `.env`, `.claude/settings.json`, etc. |
+| **Project-local configs** | Global only (`~/.local/share/chezmoi`) | Auto-detected per-project `.env`, `.claude/settings.json`, etc. |
 | **Secret auditing** | Manual | `dotf secrets list` and `dotf secrets validate` |
 | **Concepts to learn** | Source state, target state, filename attributes (`dot_`, `private_`, `run_once_`, `modify_`) | Two TOML files and `{{PLACEHOLDER}}` syntax |
 | **Runtime** | Go binary | Rust binary |
