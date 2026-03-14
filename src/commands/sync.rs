@@ -5,6 +5,8 @@ use crate::dotfiles::{DotfContext, DotfMode};
 use crate::runner::Runner;
 
 pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
+    ctx.print_mode_header();
+
     // Local mode: skip all git operations, just render+symlink
     if matches!(&ctx.mode, DotfMode::Local(_)) {
         println!("Re-rendering templates and updating symlinks...");
@@ -152,7 +154,7 @@ mod tests {
     fn sync_env() -> SyncEnv {
         let lock = crate::env_lock();
         let tmp = TempDir::new().unwrap();
-        let dotfiles = tmp.path().join("dotfiles");
+        let dotfiles = tmp.path().join(".dotf");
         std::fs::create_dir_all(dotfiles.join("configs")).unwrap();
         std::fs::write(dotfiles.join(".symlinks.toml"), "[symlinks]\n").unwrap();
         std::fs::write(dotfiles.join(".secrets.toml"), "[secrets]\n").unwrap();

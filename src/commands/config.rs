@@ -166,6 +166,8 @@ pub fn run(ctx: &DotfContext, path: Option<String>) -> Result<()> {
     );
 
     let link_path = ctx.resolve_symlink_target(&target_str)?;
+    ctx.validate_link_boundary(&filename, &link_path)?;
+
     dotfiles::ensure_symlink(&output_path, &link_path)
         .with_context(|| format!("Failed to create symlink for {filename}"))?;
     println!(
