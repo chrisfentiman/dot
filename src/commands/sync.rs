@@ -1,41 +1,37 @@
 use anyhow::{Context, Result};
-use colored::Colorize;
 
 use crate::dotfiles::{DotfContext, DotfMode};
 use crate::runner::Runner;
+use crate::ui::UI;
 
-pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
-    ctx.print_mode_header();
-
+pub fn run(ui: &UI, runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
     // Local mode: skip all git operations, just render+symlink
     if matches!(&ctx.mode, DotfMode::Local(_)) {
-        println!("Re-rendering templates and updating symlinks...");
+        ui.action("Rendering", "templates and updating symlinks");
         let synced = ctx.render_and_symlink_all()?;
         for entry in &synced {
-            println!("  {} {}", "✓".green(), entry);
+            ui.action("Rendered", entry);
         }
-        println!();
-        println!(
-            "{} Sync complete — {} config(s) up to date",
-            "✓".green().bold(),
-            synced.len()
-        );
+        ui.finished(format!("sync — {} config(s) up to date", synced.len()));
         return Ok(());
     }
 
     let dotfiles_dir = ctx.dotfiles_dir()?;
 
-    println!("Pulling latest changes...");
+    // Pull (may be slow over network)
+    let sp = ui.spinner("Pulling latest changes...");
     let pull = runner.run("git", &["pull", "--rebase"], Some(&dotfiles_dir))?;
 
-    if !pull.stdout.trim().is_empty() {
-        println!("{}", pull.stdout.trim());
-    }
-    if !pull.stderr.trim().is_empty() {
-        eprintln!("{}", pull.stderr.trim());
-    }
-
     if !pull.success() {
+        sp.finish_warn("Pulling", "failed");
+
+        if !pull.stdout.trim().is_empty() {
+            ui.raw(pull.stdout.trim());
+        }
+        if !pull.stderr.trim().is_empty() {
+            ui.raw(pull.stderr.trim());
+        }
+
         let conflicts = runner.run(
             "git",
             &["diff", "--name-only", "--diff-filter=U"],
@@ -43,27 +39,38 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
         )?;
 
         if !conflicts.stdout.trim().is_empty() {
-            println!();
-            println!("{} Merge conflicts detected in:", "✗".red().bold());
+            ui.blank();
+            ui.error("Conflict", "merge conflicts detected in:");
             for file in conflicts.stdout.trim().lines() {
-                println!("    {}", file.yellow());
+                ui.raw(format!("           {}", ui.highlight(file)));
             }
-            println!();
-            println!("Resolve conflicts, then run:");
-            println!("    cd {} && git rebase --continue", dotfiles_dir.display());
-            println!("    dotf sync");
+            ui.blank();
+            ui.raw(format!(
+                "           Resolve conflicts, then run:\n\
+                            cd {} && git rebase --continue\n\
+                            dotf sync",
+                dotfiles_dir.display()
+            ));
             anyhow::bail!("git pull failed due to merge conflicts — resolve manually");
         }
 
         anyhow::bail!("git pull failed: {}", pull.stderr.trim());
     }
 
-    println!("{} git pull done", "✓".green());
+    sp.finish("Pulling", "latest changes");
 
-    println!("Re-rendering templates and updating symlinks...");
+    if !pull.stdout.trim().is_empty() {
+        ui.raw(pull.stdout.trim());
+    }
+    if !pull.stderr.trim().is_empty() {
+        ui.raw(pull.stderr.trim());
+    }
+
+    // Render templates and update symlinks
+    ui.action("Rendering", "templates and updating symlinks");
     let synced = ctx.render_and_symlink_all()?;
     for entry in &synced {
-        println!("  {} {}", "✓".green(), entry);
+        ui.action("Rendered", entry);
     }
 
     let now = chrono::Local::now().format("%Y-%m-%d").to_string();
@@ -71,6 +78,7 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
 
     // Stage all modified tracked files first (covers edits to existing templates,
     // .symlinks.toml, .secrets.toml, etc.).
+    ui.action("Staging", "modified files");
     let update = runner
         .run("git", &["add", "--update"], Some(&dotfiles_dir))
         .context("Failed to run git add --update")?;
@@ -99,7 +107,7 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
         let nothing = commit.stdout.contains("nothing to commit")
             || commit.stderr.contains("nothing to commit");
         if nothing {
-            println!("{} Nothing new to commit", "·".dimmed());
+            ui.skip("Skipped", "nothing to commit");
         } else {
             anyhow::bail!(
                 "git commit failed: {}",
@@ -112,23 +120,20 @@ pub fn run(runner: &dyn Runner, ctx: &DotfContext) -> Result<()> {
             );
         }
     } else {
-        println!("{} Committed: {}", "✓".green(), commit_msg);
+        ui.action("Committed", &commit_msg);
 
+        let sp = ui.spinner("Pushing to remote...");
         let push = runner
             .run("git", &["push"], Some(&dotfiles_dir))
             .context("Failed to run git push")?;
         if !push.success() {
+            sp.finish_warn("Pushing", "failed");
             anyhow::bail!("git push failed: {}", push.stderr.trim());
         }
-        println!("{} Pushed to remote", "✓".green());
+        sp.finish("Pushing", "to remote");
     }
 
-    println!();
-    println!(
-        "{} Sync complete — {} config(s) up to date",
-        "✓".green().bold(),
-        synced.len()
-    );
+    ui.finished(format!("sync — {} config(s) up to date", synced.len()));
     Ok(())
 }
 
@@ -183,7 +188,7 @@ mod tests {
                 true,
             );
 
-        let err = run(&runner, &ctx()).unwrap_err();
+        let err = run(&UI::new(), &runner, &ctx()).unwrap_err();
         assert!(err.to_string().contains("merge conflicts"));
     }
 
@@ -194,7 +199,7 @@ mod tests {
             .on("git", &["pull", "--rebase"], "", false)
             .on("git", &["diff", "--name-only", "--diff-filter=U"], "", true);
 
-        let err = run(&runner, &ctx()).unwrap_err();
+        let err = run(&UI::new(), &runner, &ctx()).unwrap_err();
         assert!(err.to_string().contains("git pull failed"));
     }
 
@@ -213,7 +218,7 @@ mod tests {
             )
             .on("git", &["commit", "-m", &msg], "", true)
             .on("git", &["push"], "", true);
-        run(&runner, &ctx()).unwrap();
+        run(&UI::new(), &runner, &ctx()).unwrap();
     }
 
     #[test]
@@ -235,7 +240,7 @@ mod tests {
                 "nothing to commit, working tree clean",
                 false,
             );
-        run(&runner, &ctx()).unwrap();
+        run(&UI::new(), &runner, &ctx()).unwrap();
     }
 
     #[test]
@@ -244,7 +249,7 @@ mod tests {
         let runner = MockRunner::new()
             .on("git", &["pull", "--rebase"], "", true)
             .on("git", &["add", "--update"], "", false);
-        let err = run(&runner, &ctx()).unwrap_err();
+        let err = run(&UI::new(), &runner, &ctx()).unwrap_err();
         assert!(err.to_string().contains("git add"));
     }
 
@@ -260,7 +265,7 @@ mod tests {
                 "",
                 false,
             );
-        let err = run(&runner, &ctx()).unwrap_err();
+        let err = run(&UI::new(), &runner, &ctx()).unwrap_err();
         assert!(err.to_string().contains("git add failed"));
     }
 
@@ -279,7 +284,7 @@ mod tests {
             )
             .on("git", &["commit", "-m", &msg], "", true)
             .on_err("git", &["push"], "remote rejected", false);
-        let err = run(&runner, &ctx()).unwrap_err();
+        let err = run(&UI::new(), &runner, &ctx()).unwrap_err();
         assert!(err.to_string().contains("git push failed"));
     }
 
@@ -297,7 +302,7 @@ mod tests {
                 true,
             )
             .on_err("git", &["commit", "-m", &msg], "some other error", false);
-        let err = run(&runner, &ctx()).unwrap_err();
+        let err = run(&UI::new(), &runner, &ctx()).unwrap_err();
         assert!(err.to_string().contains("git commit failed"));
     }
 
@@ -315,6 +320,6 @@ mod tests {
 
         let ctx = DotfContext::local(root.to_path_buf());
         let runner = MockRunner::new(); // panics on any call
-        run(&runner, &ctx).unwrap();
+        run(&UI::new(), &runner, &ctx).unwrap();
     }
 }
