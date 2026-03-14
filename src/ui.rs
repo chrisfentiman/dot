@@ -183,6 +183,11 @@ impl UI {
     pub fn sym_dim(&self) -> String {
         DIM.apply_to("·").to_string()
     }
+
+    /// Indented continuation line (same padding as a verb line, no verb).
+    pub fn hint(&self, message: impl std::fmt::Display) {
+        let _ = writeln!(&self.term, "{:>WIDTH$} {}", "", DIM.apply_to(message));
+    }
 }
 
 // ── Spinner ──────────────────────────────────────────────────────────────────

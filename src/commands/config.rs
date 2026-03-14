@@ -31,9 +31,9 @@ pub fn run(ui: &UI, ctx: &DotfContext, path: Option<String>) -> Result<()> {
         .with_context(|| format!("Failed to read {}", source_path.display()))?;
 
     ui.blank();
-    ui.dim("─".repeat(60));
+    ui.raw(ui.dim("─".repeat(60)));
     ui.raw(&content);
-    ui.dim("─".repeat(60));
+    ui.raw(ui.dim("─".repeat(60)));
     ui.blank();
 
     let mut new_secrets: Vec<(String, String)> = Vec::new();
@@ -117,8 +117,8 @@ pub fn run(ui: &UI, ctx: &DotfContext, path: Option<String>) -> Result<()> {
     ctx.write_secrets(&secrets)?;
     if !new_secrets.is_empty() {
         ui.action(
-            "Creating",
-            format!("added {} secret(s) to .secrets.toml", new_secrets.len()),
+            "Added",
+            format!("{} secret(s) to .secrets.toml", new_secrets.len()),
         );
     }
 
@@ -152,7 +152,7 @@ pub fn run(ui: &UI, ctx: &DotfContext, path: Option<String>) -> Result<()> {
         .symlinks
         .insert(filename.clone(), target_str.clone());
     ctx.write_symlinks(&symlinks)?;
-    ui.action("Scanning", "added symlink mapping to .symlinks.toml");
+    ui.action("Added", "symlink mapping to .symlinks.toml");
 
     let output_path = configs_dir.join(&filename);
     dotfiles::render_and_write(&template_path, &output_path, &secrets)

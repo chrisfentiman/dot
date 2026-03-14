@@ -50,7 +50,7 @@ pub fn run(ui: &UI, ctx: &DotfContext, name: Option<String>) -> Result<()> {
 
         if !template_path.exists() {
             ui.warn(
-                "Skipped",
+                "Missing",
                 format!("{}: template not found", ui.highlight(config_name)),
             );
             continue;
@@ -77,8 +77,8 @@ pub fn run(ui: &UI, ctx: &DotfContext, name: Option<String>) -> Result<()> {
 
         if fresh == current {
             ui.skip(
-                "Checking",
-                format!("{} — no changes", ui.highlight(config_name)),
+                "Unchanged",
+                ui.highlight(config_name),
             );
         } else {
             any_diff = true;

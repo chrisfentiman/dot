@@ -327,8 +327,7 @@ fn install_completions(ui: &UI, runner: &dyn Runner) -> Result<()> {
                 "Installed",
                 format!("zsh completions to {}", completion_file.display()),
             );
-            ui.skip(
-                "",
+            ui.hint(
                 "add to ~/.zshrc if not present: fpath=(~/.zfunc $fpath) && autoload -U compinit && compinit",
             );
         }
